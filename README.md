@@ -53,6 +53,22 @@ Para desligar previews OpenCV:
 ros2 launch tello_driver tello_basic.launch.py show_preview:=false
 ```
 
+Argumentos uteis do launch:
+
+| Argumento | Default | Descricao |
+| --- | --- | --- |
+| `show_preview` | `true` | Liga/desliga as janelas OpenCV do `stream_node` e `vision_node`. |
+| `stream_url` | `udp://0.0.0.0:11111?fifo_size=50000000&overrun_nonfatal=1` | URL do stream UDP do Tello. |
+| `model_path` | `yolov8n.pt` | Modelo YOLO usado pelo `vision_node`. |
+| `enable_sdk_init` | `true` | Faz o `stream_node` enviar o comando `command` ao iniciar. |
+| `enable_stream_on` | `true` | Faz o `stream_node` enviar o comando `streamon` ao iniciar. |
+
+Para testar o launch sem drone conectado, desative os comandos SDK do `stream_node`:
+
+```bash
+ros2 launch tello_driver tello_basic.launch.py show_preview:=false enable_sdk_init:=false enable_stream_on:=false
+```
+
 ## Configuracao
 
 Os defaults continuam declarados dentro dos nos. O arquivo `config/tello_default.yaml` existe como referencia opcional para facilitar ajustes futuros.

@@ -9,6 +9,8 @@ def generate_launch_description():
     show_preview = LaunchConfiguration('show_preview')
     model_path = LaunchConfiguration('model_path')
     stream_url = LaunchConfiguration('stream_url')
+    enable_sdk_init = LaunchConfiguration('enable_sdk_init')
+    enable_stream_on = LaunchConfiguration('enable_stream_on')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -26,6 +28,16 @@ def generate_launch_description():
             default_value='udp://0.0.0.0:11111?fifo_size=50000000&overrun_nonfatal=1',
             description='Tello UDP video stream URL.',
         ),
+        DeclareLaunchArgument(
+            'enable_sdk_init',
+            default_value='true',
+            description='Send SDK command initialization when stream_node starts.',
+        ),
+        DeclareLaunchArgument(
+            'enable_stream_on',
+            default_value='true',
+            description='Send streamon command when stream_node starts.',
+        ),
 
         Node(
             package='tello_driver',
@@ -34,6 +46,8 @@ def generate_launch_description():
             parameters=[{
                 'show_preview': ParameterValue(show_preview, value_type=bool),
                 'stream_url': stream_url,
+                'enable_sdk_init': ParameterValue(enable_sdk_init, value_type=bool),
+                'enable_stream_on': ParameterValue(enable_stream_on, value_type=bool),
             }],
         ),
 
