@@ -7,6 +7,12 @@ import cv2
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 
+from tello_driver.tello_client import TelloClient
+
+t = TelloClient(local_port=9001)
+print(t.enter_sdk_mode())
+print(t.stream_on())
+t.close()
 
 class TelloVideoNode(Node):
 
