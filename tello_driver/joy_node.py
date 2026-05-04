@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
@@ -40,6 +40,9 @@ class TelloJoyNode(Node):
         self.declare_parameter('deadzone', 0.30)
         self.declare_parameter('rc_period', 0.05)
         self.declare_parameter('joy_timeout', 0.30)
+        self.declare_parameter('command_cooldown', 3.0)
+        self.declare_parameter('takeoff_rc_pause', 3.0)
+        self.declare_parameter('land_rc_pause', 2.0)
 
         self.tello_ip = self.get_parameter('tello_ip').value
         self.tello_port = int(self.get_parameter('tello_port').value)
@@ -59,6 +62,9 @@ class TelloJoyNode(Node):
         self.deadzone = float(self.get_parameter('deadzone').value)
         self.rc_period = float(self.get_parameter('rc_period').value)
         self.joy_timeout = float(self.get_parameter('joy_timeout').value)
+        self.command_cooldown = float(self.get_parameter('command_cooldown').value)
+        self.takeoff_rc_pause = float(self.get_parameter('takeoff_rc_pause').value)
+        self.land_rc_pause = float(self.get_parameter('land_rc_pause').value)
 
         # Cliente do Tello
         self.tello = TelloClient(
@@ -74,6 +80,9 @@ class TelloJoyNode(Node):
         self.last_takeoff_pressed = False
         self.last_land_pressed = False
         self.sdk_ready = False
+        self.is_flying: Optional[bool] = None
+        self.last_critical_command_time_ns = 0
+        self.rc_pause_until_ns = 0
 
         # Inicialização
         self._initialize_tello()
@@ -117,8 +126,66 @@ class TelloJoyNode(Node):
             return 0
         return buttons[index]
 
+    @staticmethod
+    def _is_ok_response(response: Optional[str]) -> bool:
+        return response is not None and response.strip().lower() == 'ok'
+
+    def _cooldown_remaining(self, now_ns: int) -> float:
+        if self.last_critical_command_time_ns == 0:
+            return 0.0
+
+        elapsed_sec = (now_ns - self.last_critical_command_time_ns) / 1e9
+        return max(0.0, self.command_cooldown - elapsed_sec)
+
+    def _pause_rc(self, duration_sec: float) -> None:
+        now_ns = self.get_clock().now().nanoseconds
+        pause_until_ns = now_ns + int(duration_sec * 1e9)
+        self.rc_pause_until_ns = max(self.rc_pause_until_ns, pause_until_ns)
+        self.current_rc = (0, 0, 0, 0)
+
+    def _handle_takeoff(self, now_ns: int) -> None:
+        remaining = self._cooldown_remaining(now_ns)
+        if remaining > 0.0:
+            self.get_logger().warn(
+                f'Takeoff ignorado: cooldown ativo ({remaining:.1f}s restantes).'
+            )
+            return
+
+        if self.is_flying is True:
+            self.get_logger().warn('Takeoff ignorado: drone ja esta marcado como em voo.')
+            return
+
+        self.last_critical_command_time_ns = now_ns
+        response = self.tello.takeoff()
+        self.get_logger().warn(f'Takeoff: {response}')
+
+        if self._is_ok_response(response):
+            self.is_flying = True
+            self._pause_rc(self.takeoff_rc_pause)
+
+    def _handle_land(self, now_ns: int) -> None:
+        remaining = self._cooldown_remaining(now_ns)
+        if remaining > 0.0:
+            self.get_logger().warn(
+                f'Land ignorado: cooldown ativo ({remaining:.1f}s restantes).'
+            )
+            return
+
+        if self.is_flying is False:
+            self.get_logger().warn('Land ignorado: drone ja esta marcado como no solo.')
+            return
+
+        self.last_critical_command_time_ns = now_ns
+        response = self.tello.land()
+        self.get_logger().warn(f'Land: {response}')
+
+        if self._is_ok_response(response):
+            self.is_flying = False
+            self._pause_rc(self.land_rc_pause)
+
     def _joy_callback(self, msg: Joy) -> None:
-        self.last_joy_time_ns = self.get_clock().now().nanoseconds
+        now_ns = self.get_clock().now().nanoseconds
+        self.last_joy_time_ns = now_ns
 
         yaw = self._apply_deadzone(self._safe_axis(msg.axes, self.axis_yaw)) * -100.0
         up_down = self._apply_deadzone(self._safe_axis(msg.axes, self.axis_up_down)) * 100.0
@@ -136,12 +203,10 @@ class TelloJoyNode(Node):
         land_pressed = bool(self._safe_button(msg.buttons, self.button_land))
 
         if takeoff_pressed and not self.last_takeoff_pressed:
-            response = self.tello.takeoff()
-            self.get_logger().warn(f'Takeoff: {response}')
+            self._handle_takeoff(now_ns)
 
         if land_pressed and not self.last_land_pressed:
-            response = self.tello.land()
-            self.get_logger().warn(f'Land: {response}')
+            self._handle_land(now_ns)
 
         self.last_takeoff_pressed = takeoff_pressed
         self.last_land_pressed = land_pressed
@@ -151,6 +216,11 @@ class TelloJoyNode(Node):
             return
 
         now_ns = self.get_clock().now().nanoseconds
+
+        if now_ns < self.rc_pause_until_ns:
+            self.current_rc = (0, 0, 0, 0)
+            self.tello.send_rc(0, 0, 0, 0)
+            return
 
         if self.last_joy_time_ns == 0:
             self.tello.send_rc(0, 0, 0, 0)

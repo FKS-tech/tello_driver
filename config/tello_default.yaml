@@ -14,6 +14,9 @@ tello_joy_node:
     deadzone: 0.30
     rc_period: 0.05
     joy_timeout: 0.30
+    command_cooldown: 3.0
+    takeoff_rc_pause: 3.0
+    land_rc_pause: 2.0
 
 tello_video_node:
   ros__parameters:
