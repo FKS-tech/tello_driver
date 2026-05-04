@@ -14,19 +14,32 @@ class TelloClient:
     ):
         self.tello_ip = tello_ip
         self.tello_port = tello_port
+        self.local_port = local_port
+        self.timeout = timeout
         self.address = (self.tello_ip, self.tello_port)
+        self._closed = False
 
+        # Keep this class independent from ROS so it can be reused by nodes,
+        # tests, and future autonomy helpers.
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(('', local_port))
         self.socket.settimeout(timeout)
 
     def close(self) -> None:
+        if self._closed:
+            return
+
         try:
             self.socket.close()
         except Exception:
             pass
+        finally:
+            self._closed = True
 
     def send_command(self, command: str) -> Optional[str]:
+        if self._closed:
+            return None
+
         try:
             self.socket.sendto(command.encode('utf-8'), self.address)
             response, _ = self.socket.recvfrom(1024)
@@ -35,6 +48,9 @@ class TelloClient:
             return None
 
     def send_rc(self, left_right: int, forward_back: int, up_down: int, yaw: int) -> bool:
+        if self._closed:
+            return False
+
         def clamp(value: float) -> int:
             return max(-100, min(100, int(value)))
 

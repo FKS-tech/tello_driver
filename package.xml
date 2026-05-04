@@ -3,9 +3,9 @@
 <package format="3">
   <name>tello_driver</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Driver ROS 2 em Python para o DJI Tello.</description>
   <maintainer email="nerdstar.felipe@gmail.com">f-k-s</maintainer>
-  <license>TODO: License declaration</license>
+  <license>MIT</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 
@@ -13,9 +13,12 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>cv_bridge</depend>
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
 
   <exec_depend>python3</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>joy</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

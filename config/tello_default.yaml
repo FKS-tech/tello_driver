@@ -1,0 +1,45 @@
+tello_joy_node:
+  ros__parameters:
+    tello_ip: "192.168.10.1"
+    tello_port: 8889
+    local_port: 9000
+    sdk_timeout: 5.0
+    joy_topic: "/joy"
+    axis_yaw: 0
+    axis_up_down: 1
+    axis_left_right: 3
+    axis_forward_back: 4
+    button_land: 0
+    button_takeoff: 3
+    deadzone: 0.30
+    rc_period: 0.05
+    joy_timeout: 0.30
+
+tello_video_node:
+  ros__parameters:
+    stream_url: "udp://0.0.0.0:11111?fifo_size=50000000&overrun_nonfatal=1"
+    publish_topic: "/tello/image_raw"
+    show_preview: true
+    timer_period: 0.03
+    enable_sdk_init: true
+    enable_stream_on: true
+    command_local_port: 9001
+    sdk_timeout: 5.0
+
+tello_telemetry_node:
+  ros__parameters:
+    telemetry_port: 8890
+    raw_topic: "/tello/telemetry/raw"
+    json_topic: "/tello/telemetry/json"
+    poll_period: 0.05
+    log_summary: true
+
+vision_node:
+  ros__parameters:
+    input_topic: "/tello/image_raw"
+    output_image_topic: "/vision/image_annotated"
+    output_detection_topic: "/vision/detections"
+    model_path: "yolov8n.pt"
+    confidence_threshold: 0.5
+    process_every_n_frames: 3
+    show_preview: true

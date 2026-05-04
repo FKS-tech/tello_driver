@@ -9,10 +9,6 @@ from sensor_msgs.msg import Image
 
 from tello_driver.tello_client import TelloClient
 
-t = TelloClient(local_port=9001)
-print(t.enter_sdk_mode())
-print(t.stream_on())
-t.close()
 
 class TelloVideoNode(Node):
 
@@ -24,16 +20,26 @@ class TelloVideoNode(Node):
         self.declare_parameter('publish_topic', '/tello/image_raw')
         self.declare_parameter('show_preview', True)
         self.declare_parameter('timer_period', 0.03)
+        self.declare_parameter('enable_sdk_init', True)
+        self.declare_parameter('enable_stream_on', True)
+        self.declare_parameter('command_local_port', 9001)
+        self.declare_parameter('sdk_timeout', 5.0)
 
         self.stream_url = self.get_parameter('stream_url').get_parameter_value().string_value
         self.publish_topic = self.get_parameter('publish_topic').get_parameter_value().string_value
         self.show_preview = self.get_parameter('show_preview').get_parameter_value().bool_value
         self.timer_period = self.get_parameter('timer_period').get_parameter_value().double_value
+        self.enable_sdk_init = self.get_parameter('enable_sdk_init').get_parameter_value().bool_value
+        self.enable_stream_on = self.get_parameter('enable_stream_on').get_parameter_value().bool_value
+        self.command_local_port = self.get_parameter('command_local_port').get_parameter_value().integer_value
+        self.sdk_timeout = self.get_parameter('sdk_timeout').get_parameter_value().double_value
 
         self.bridge = CvBridge()
 
         # Publicador de imagem
         self.image_pub = self.create_publisher(Image, self.publish_topic, 10)
+
+        self.initialize_tello_stream()
 
         # Abrir stream
         self.cap = None
@@ -46,6 +52,30 @@ class TelloVideoNode(Node):
         self.get_logger().info(f"Stream: {self.stream_url}")
         self.get_logger().info(f"Publicando em: {self.publish_topic}")
         self.get_logger().info(f"Preview local: {'ON' if self.show_preview else 'OFF'}")
+
+    def initialize_tello_stream(self):
+        if not self.enable_sdk_init and not self.enable_stream_on:
+            return
+
+        try:
+            tello = TelloClient(
+                local_port=self.command_local_port,
+                timeout=self.sdk_timeout,
+            )
+        except Exception as exc:
+            self.get_logger().error(f"Erro ao criar cliente SDK do Tello: {exc}")
+            return
+
+        try:
+            if self.enable_sdk_init:
+                response = tello.enter_sdk_mode()
+                self.get_logger().info(f"SDK init: {response}")
+
+            if self.enable_stream_on:
+                response = tello.stream_on()
+                self.get_logger().info(f"Stream on: {response}")
+        finally:
+            tello.close()
 
     def open_stream(self):
         if self.cap is not None:

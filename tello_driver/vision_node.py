@@ -11,6 +11,9 @@ import cv2
 from ultralytics import YOLO
 import json
 
+from tello_driver.visual_math import compute_bbox_center, compute_normalized_error
+
+
 class VisionNode(Node):
     def __init__(self):
         super().__init__('vision_node')
@@ -84,13 +87,18 @@ class VisionNode(Node):
                 w = max(0.0, x2 - x1)
                 h = max(0.0, y2 - y1)
                 area_ratio = (w * h) / float(frame_w * frame_h)
+                cx, cy = compute_bbox_center(x1, y1, x2, y2)
+                error_x, error_y = compute_normalized_error(cx, cy, frame_w, frame_h)
 
                 detections.append({
                     'class_id': cls_id,
                     'class_name': cls_name,
                     'confidence': conf,
                     'bbox_xyxy': [x1, y1, x2, y2],
-                    'area_ratio': area_ratio
+                    'area_ratio': area_ratio,
+                    'center_px': [cx, cy],
+                    'error_norm': [error_x, error_y],
+                    'frame_size': [frame_w, frame_h]
                 })
 
         if self.show_preview:
