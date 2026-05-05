@@ -28,6 +28,7 @@ setup(
             'telemetry_node = tello_driver.telemetry_node:main',
             'vision_node = tello_driver.vision_node:main',
             'visual_servo_node = tello_driver.visual_servo_node:main',
+            'qr_node = tello_driver.qr_node:main',
         ],
     },
 )

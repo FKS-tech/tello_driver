@@ -10,6 +10,7 @@ O pacote ainda nao implementa voo autonomo real. A estrutura atual prepara o ter
 - `stream_node`: ativa o SDK/stream do Tello, abre o video UDP e publica imagens ROS.
 - `telemetry_node`: escuta telemetria UDP na porta `8890` e publica dados brutos e JSON.
 - `vision_node`: assina imagem do Tello, roda YOLO e publica imagem anotada e deteccoes JSON.
+- `qr_node`: detecta e le QR Codes em `/tello/image_raw`, publicando deteccoes em `/vision/qr_codes`.
 - `visual_servo_node`: le deteccoes visuais e calcula comando de centralizacao visual em `/tello/autonomy/cmd_vel`, sem enviar comandos diretamente ao drone.
 
 ## Topicos
@@ -24,6 +25,10 @@ O pacote ainda nao implementa voo autonomo real. A estrutura atual prepara o ter
 | `/vision/image_annotated` | `sensor_msgs/Image` | publicado | `vision_node` |
 | `/vision/detections` | `std_msgs/String` | publicado | `vision_node` |
 | `/vision/detections` | `std_msgs/String` | assinado | `visual_servo_node` |
+| `/vision/qr_codes` | `std_msgs/String` | publicado | `qr_node` |
+| `/vision/qr_codes` | `std_msgs/String` | assinado | `visual_servo_node` opcional |
+| `/vision/qr_image_annotated` | `sensor_msgs/Image` | publicado | `qr_node` |
+| `/vision/qr_debug` | `std_msgs/String` | publicado | `qr_node` |
 | `/tello/autonomy/cmd_vel` | `geometry_msgs/Twist` | publicado | `visual_servo_node` |
 | `/tello/autonomy/debug` | `std_msgs/String` | publicado | `visual_servo_node` |
 
@@ -42,6 +47,7 @@ source install/setup.bash
 ros2 run tello_driver stream_node
 ros2 run tello_driver telemetry_node
 ros2 run tello_driver vision_node
+ros2 run tello_driver qr_node
 ros2 run tello_driver visual_servo_node
 ros2 run tello_driver joy_node
 ```
@@ -114,6 +120,14 @@ ros2 topic echo /tello/autonomy/cmd_vel
 ros2 topic echo /tello/autonomy/debug
 ```
 
+Para observar QR Codes:
+
+```bash
+ros2 run tello_driver qr_node
+ros2 topic echo /vision/qr_codes
+ros2 topic echo /vision/qr_debug
+```
+
 O `visual_servo_node` pode ser ajustado para cenarios com multiplos alvos:
 
 - `target_selection_strategy:=closest_to_center` prefere o alvo mais proximo do centro da imagem.
@@ -127,6 +141,24 @@ Exemplo:
 ros2 launch tello_driver visual_servo_test.launch.py target_class_name:=person target_selection_strategy:=closest_to_center enable_target_lock:=true show_preview:=true
 ```
 
+O `qr_node` apenas detecta QR Codes. O alinhamento visual continua sendo feito pelo `visual_servo_node` ao usar `input_detection_topic:=/vision/qr_codes` e `target_class_name:=qr_code`:
+
+```bash
+ros2 run tello_driver visual_servo_node --ros-args -p input_detection_topic:=/vision/qr_codes -p target_class_name:=qr_code
+```
+
+Tambem existe um launch seguro para testar QR + servo visual sem iniciar `joy_node` e sem enviar `command`/`streamon` por padrao:
+
+```bash
+ros2 launch tello_driver qr_servo_test.launch.py show_preview:=true
+```
+
+Com drone real e stream ligado pelo `stream_node`:
+
+```bash
+ros2 launch tello_driver qr_servo_test.launch.py show_preview:=true enable_sdk_init:=true enable_stream_on:=true
+```
+
 ## Configuracao
 
 Os defaults continuam declarados dentro dos nos. O arquivo `config/tello_default.yaml` existe como referencia opcional para facilitar ajustes futuros.
@@ -136,6 +168,6 @@ Os defaults continuam declarados dentro dos nos. O arquivo `config/tello_default
 Ideias planejadas, ainda nao implementadas:
 
 - integracao segura da centralizacao visual com controle real;
-- deteccao de QR Code;
+- uso da leitura de QR Code dentro de uma missao;
 - missao simplificada inspirada na Fase 4 da Flying Robot League;
 - criacao futura de `mission_node` e `command_mux_node`.

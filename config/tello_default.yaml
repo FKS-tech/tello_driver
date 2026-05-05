@@ -47,8 +47,21 @@ vision_node:
     process_every_n_frames: 3
     show_preview: true
 
+qr_node:
+  ros__parameters:
+    input_topic: "/tello/image_raw"
+    output_detection_topic: "/vision/qr_codes"
+    output_image_topic: "/vision/qr_image_annotated"
+    debug_topic: "/vision/qr_debug"
+    show_preview: false
+    process_every_n_frames: 1
+    publish_empty: true
+    publish_undecoded: false
+    min_area_ratio: 0.0001
+
 visual_servo_node:
   ros__parameters:
+    input_detection_topic: "/vision/detections"
     target_class_name: ""
     confidence_threshold: 0.5
     min_area_ratio: 0.0

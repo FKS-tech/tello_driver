@@ -5,6 +5,7 @@ from typing import Optional
 
 import rclpy
 from geometry_msgs.msg import Twist
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -26,7 +27,9 @@ class VisualServoNode(Node):
         self.declare_parameter('enable_target_lock', True)
         self.declare_parameter('target_lock_timeout', 1.0)
         self.declare_parameter('target_lock_max_error_distance', 0.35)
+        self.declare_parameter('input_detection_topic', '/vision/detections')
 
+        self.input_detection_topic = self.get_parameter('input_detection_topic').value
         self.target_class_name = self.get_parameter('target_class_name').value
         self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
         self.min_area_ratio = float(self.get_parameter('min_area_ratio').value)
@@ -55,7 +58,7 @@ class VisualServoNode(Node):
 
         self.detection_sub = self.create_subscription(
             String,
-            '/vision/detections',
+            self.input_detection_topic,
             self._detections_callback,
             10,
         )
@@ -73,7 +76,7 @@ class VisualServoNode(Node):
         self.watchdog_timer = self.create_timer(0.1, self._watchdog_callback)
 
         self.get_logger().info('Visual servo node iniciado em modo seguro')
-        self.get_logger().info('Assinando deteccoes em: /vision/detections')
+        self.get_logger().info(f'Assinando deteccoes em: {self.input_detection_topic}')
         self.get_logger().info('Publicando comando visual em: /tello/autonomy/cmd_vel')
 
     @staticmethod
@@ -89,7 +92,9 @@ class VisualServoNode(Node):
         if now_ns - self.last_invalid_warning_time_ns < int(2.0 * 1e9):
             return
 
-        self.get_logger().warn(f'Mensagem invalida em /vision/detections: {reason}')
+        self.get_logger().warn(
+            f'Mensagem invalida em {self.input_detection_topic}: {reason}'
+        )
         self.last_invalid_warning_time_ns = now_ns
 
     def _publish_debug(self, payload: dict) -> None:
@@ -280,11 +285,12 @@ def main(args=None):
 
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
