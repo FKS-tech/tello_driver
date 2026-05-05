@@ -159,6 +159,35 @@ Com drone real e stream ligado pelo `stream_node`:
 ros2 launch tello_driver qr_servo_test.launch.py show_preview:=true enable_sdk_init:=true enable_stream_on:=true
 ```
 
+## Fluxo QR + servo visual
+
+O `qr_node` le `/tello/image_raw`, detecta QR Codes com OpenCV e publica deteccoes em `/vision/qr_codes`. O `visual_servo_node` pode usar `/vision/qr_codes` como entrada por meio do parametro `input_detection_topic`.
+
+O `visual_servo_node` nao le QR diretamente: ele apenas centraliza qualquer alvo visual compativel com o formato de deteccao usado pelo pacote. A missao da Fase 4 ainda nao esta implementada; futuramente essa decisao de missao deve ficar em um `mission_node`.
+
+```text
+stream_node
+  -> /tello/image_raw
+qr_node
+  -> /vision/qr_codes
+visual_servo_node
+  -> /tello/autonomy/cmd_vel
+mission_node futuro
+  -> ainda nao implementado
+```
+
+Comandos uteis:
+
+```bash
+ros2 launch tello_driver qr_servo_test.launch.py show_preview:=true
+ros2 launch tello_driver qr_servo_test.launch.py show_preview:=true enable_sdk_init:=true enable_stream_on:=true
+ros2 topic echo /vision/qr_codes
+ros2 topic echo /vision/qr_debug
+ros2 topic echo /tello/autonomy/cmd_vel
+```
+
+Esse launch nao inicia `joy_node` e nao faz o drone obedecer aos comandos publicados pelo servo visual. Ele apenas publica o comando calculado em `/tello/autonomy/cmd_vel`.
+
 ## Configuracao
 
 Os defaults continuam declarados dentro dos nos. O arquivo `config/tello_default.yaml` existe como referencia opcional para facilitar ajustes futuros.
