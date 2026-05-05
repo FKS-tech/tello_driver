@@ -58,3 +58,7 @@ visual_servo_node:
     center_deadband: 0.10
     detection_timeout: 0.5
     publish_zero_when_lost: true
+    target_selection_strategy: "closest_to_center"
+    enable_target_lock: true
+    target_lock_timeout: 1.0
+    target_lock_max_error_distance: 0.35

@@ -22,6 +22,10 @@ class VisualServoNode(Node):
         self.declare_parameter('center_deadband', 0.10)
         self.declare_parameter('detection_timeout', 0.5)
         self.declare_parameter('publish_zero_when_lost', True)
+        self.declare_parameter('target_selection_strategy', 'closest_to_center')
+        self.declare_parameter('enable_target_lock', True)
+        self.declare_parameter('target_lock_timeout', 1.0)
+        self.declare_parameter('target_lock_max_error_distance', 0.35)
 
         self.target_class_name = self.get_parameter('target_class_name').value
         self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
@@ -32,6 +36,22 @@ class VisualServoNode(Node):
         self.center_deadband = float(self.get_parameter('center_deadband').value)
         self.detection_timeout = float(self.get_parameter('detection_timeout').value)
         self.publish_zero_when_lost = bool(self.get_parameter('publish_zero_when_lost').value)
+        self.target_selection_strategy = str(
+            self.get_parameter('target_selection_strategy').value
+        ).strip()
+        self.enable_target_lock = bool(self.get_parameter('enable_target_lock').value)
+        self.target_lock_timeout = float(self.get_parameter('target_lock_timeout').value)
+        self.target_lock_max_error_distance = float(
+            self.get_parameter('target_lock_max_error_distance').value
+        )
+
+        valid_strategies = {'highest_confidence', 'largest_area', 'closest_to_center'}
+        if self.target_selection_strategy not in valid_strategies:
+            self.get_logger().warn(
+                'target_selection_strategy invalida: '
+                f'{self.target_selection_strategy}. Usando closest_to_center.'
+            )
+            self.target_selection_strategy = 'closest_to_center'
 
         self.detection_sub = self.create_subscription(
             String,
@@ -46,6 +66,9 @@ class VisualServoNode(Node):
         self.last_valid_detection_time_ns = 0
         self.target_lost = True
         self.last_invalid_warning_time_ns = 0
+        self.last_target_error_x = None
+        self.last_target_error_y = None
+        self.last_target_lock_time_ns = 0
 
         self.watchdog_timer = self.create_timer(0.1, self._watchdog_callback)
 
@@ -78,6 +101,8 @@ class VisualServoNode(Node):
         self._publish_debug({
             'target_found': False,
             'reason': reason,
+            'selection_strategy': self.target_selection_strategy,
+            'target_lock_enabled': self.enable_target_lock,
             'yaw_cmd': 0.0,
         })
 
@@ -92,7 +117,7 @@ class VisualServoNode(Node):
             self._warn_invalid_message('payload_not_list')
             return
 
-        target = self._select_target(detections)
+        target, target_lock_used = self._select_target(detections)
         if target is None:
             self.target_lost = True
             if self.publish_zero_when_lost:
@@ -100,26 +125,34 @@ class VisualServoNode(Node):
             self._publish_no_target_debug('no_valid_detection')
             return
 
-        error_x = float(target['error_norm'][0])
+        error_x, error_y = self._get_detection_error(target)
         yaw_cmd = self._compute_yaw_command(error_x)
 
         twist = self._zero_twist()
         twist.angular.z = yaw_cmd
         self.cmd_pub.publish(twist)
 
-        self.last_valid_detection_time_ns = self.get_clock().now().nanoseconds
+        now_ns = self.get_clock().now().nanoseconds
+        self.last_valid_detection_time_ns = now_ns
+        self.last_target_error_x = error_x
+        self.last_target_error_y = error_y
+        self.last_target_lock_time_ns = now_ns
         self.target_lost = False
 
         self._publish_debug({
             'target_found': True,
+            'selection_strategy': self.target_selection_strategy,
+            'target_lock_enabled': self.enable_target_lock,
+            'target_lock_used': target_lock_used,
             'class_name': target.get('class_name', ''),
             'confidence': float(target['confidence']),
             'area_ratio': float(target['area_ratio']),
             'error_x': error_x,
+            'error_y': error_y,
             'yaw_cmd': yaw_cmd,
         })
 
-    def _select_target(self, detections: list) -> Optional[dict]:
+    def _select_target(self, detections: list) -> tuple[Optional[dict], bool]:
         valid_detections = []
 
         for detection in detections:
@@ -132,21 +165,45 @@ class VisualServoNode(Node):
             valid_detections.append(detection)
 
         if not valid_detections:
-            return None
+            return None, False
 
-        return max(
+        now_ns = self.get_clock().now().nanoseconds
+        if self.enable_target_lock and self._has_recent_target_lock(now_ns):
+            locked_target = min(valid_detections, key=self._target_error_distance)
+            if self._target_error_distance(locked_target) <= self.target_lock_max_error_distance:
+                return locked_target, True
+
+        if self.target_selection_strategy == 'highest_confidence':
+            return max(
+                valid_detections,
+                key=lambda detection: (
+                    float(detection['confidence']),
+                    float(detection['area_ratio']),
+                ),
+            ), False
+
+        if self.target_selection_strategy == 'largest_area':
+            return max(
+                valid_detections,
+                key=lambda detection: (
+                    float(detection['area_ratio']),
+                    float(detection['confidence']),
+                ),
+            ), False
+
+        return min(
             valid_detections,
             key=lambda detection: (
-                float(detection['confidence']),
-                float(detection['area_ratio']),
+                self._center_distance(detection),
+                -float(detection['confidence']),
             ),
-        )
+        ), False
 
     def _is_valid_detection(self, detection: dict) -> bool:
         try:
             confidence = float(detection.get('confidence'))
             area_ratio = float(detection.get('area_ratio'))
-            error_norm = detection.get('error_norm')
+            self._get_detection_error(detection)
         except (TypeError, ValueError):
             return False
 
@@ -160,15 +217,36 @@ class VisualServoNode(Node):
         if self.target_class_name and class_name != self.target_class_name:
             return False
 
-        if not isinstance(error_norm, list) or len(error_norm) < 1:
-            return False
-
-        try:
-            float(error_norm[0])
-        except (TypeError, ValueError):
-            return False
-
         return True
+
+    def _get_detection_error(self, detection: dict) -> tuple[float, float]:
+        error_norm = detection.get('error_norm')
+        if not isinstance(error_norm, list) or len(error_norm) < 1:
+            raise ValueError('invalid error_norm')
+
+        error_x = float(error_norm[0])
+        error_y = float(error_norm[1]) if len(error_norm) > 1 else 0.0
+        return error_x, error_y
+
+    def _has_recent_target_lock(self, now_ns: int) -> bool:
+        if self.last_target_error_x is None or self.last_target_error_y is None:
+            return False
+
+        if self.last_target_lock_time_ns == 0:
+            return False
+
+        age_sec = (now_ns - self.last_target_lock_time_ns) / 1e9
+        return age_sec <= self.target_lock_timeout
+
+    def _target_error_distance(self, detection: dict) -> float:
+        error_x, error_y = self._get_detection_error(detection)
+        dx = error_x - self.last_target_error_x
+        dy = error_y - self.last_target_error_y
+        return (dx * dx + dy * dy) ** 0.5
+
+    def _center_distance(self, detection: dict) -> float:
+        error_x, error_y = self._get_detection_error(detection)
+        return (error_x * error_x + error_y * error_y) ** 0.5
 
     def _compute_yaw_command(self, error_x: float) -> float:
         if abs(error_x) < self.center_deadband:

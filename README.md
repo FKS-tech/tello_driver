@@ -114,6 +114,19 @@ ros2 topic echo /tello/autonomy/cmd_vel
 ros2 topic echo /tello/autonomy/debug
 ```
 
+O `visual_servo_node` pode ser ajustado para cenarios com multiplos alvos:
+
+- `target_selection_strategy:=closest_to_center` prefere o alvo mais proximo do centro da imagem.
+- `target_selection_strategy:=highest_confidence` prefere a deteccao com maior confianca.
+- `target_selection_strategy:=largest_area` prefere o alvo com maior area relativa.
+- `enable_target_lock:=true` tenta manter o mesmo alvo entre frames para reduzir trocas bruscas quando ha varias pessoas ou objetos validos.
+
+Exemplo:
+
+```bash
+ros2 launch tello_driver visual_servo_test.launch.py target_class_name:=person target_selection_strategy:=closest_to_center enable_target_lock:=true show_preview:=true
+```
+
 ## Configuracao
 
 Os defaults continuam declarados dentro dos nos. O arquivo `config/tello_default.yaml` existe como referencia opcional para facilitar ajustes futuros.

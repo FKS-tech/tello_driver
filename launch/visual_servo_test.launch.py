@@ -18,6 +18,10 @@ def generate_launch_description():
     yaw_kp = LaunchConfiguration('yaw_kp')
     max_yaw_speed = LaunchConfiguration('max_yaw_speed')
     center_deadband = LaunchConfiguration('center_deadband')
+    target_selection_strategy = LaunchConfiguration('target_selection_strategy')
+    enable_target_lock = LaunchConfiguration('enable_target_lock')
+    target_lock_timeout = LaunchConfiguration('target_lock_timeout')
+    target_lock_max_error_distance = LaunchConfiguration('target_lock_max_error_distance')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -80,6 +84,26 @@ def generate_launch_description():
             default_value='0.10',
             description='Normalized horizontal deadband used by visual_servo_node.',
         ),
+        DeclareLaunchArgument(
+            'target_selection_strategy',
+            default_value='closest_to_center',
+            description='Target selection strategy used by visual_servo_node.',
+        ),
+        DeclareLaunchArgument(
+            'enable_target_lock',
+            default_value='true',
+            description='Keep tracking the nearest previous target across frames.',
+        ),
+        DeclareLaunchArgument(
+            'target_lock_timeout',
+            default_value='1.0',
+            description='Maximum age in seconds for target lock reuse.',
+        ),
+        DeclareLaunchArgument(
+            'target_lock_max_error_distance',
+            default_value='0.35',
+            description='Maximum normalized distance for target lock reuse.',
+        ),
 
         Node(
             package='tello_driver',
@@ -115,6 +139,13 @@ def generate_launch_description():
                 'yaw_kp': ParameterValue(yaw_kp, value_type=float),
                 'max_yaw_speed': ParameterValue(max_yaw_speed, value_type=float),
                 'center_deadband': ParameterValue(center_deadband, value_type=float),
+                'target_selection_strategy': target_selection_strategy,
+                'enable_target_lock': ParameterValue(enable_target_lock, value_type=bool),
+                'target_lock_timeout': ParameterValue(target_lock_timeout, value_type=float),
+                'target_lock_max_error_distance': ParameterValue(
+                    target_lock_max_error_distance,
+                    value_type=float,
+                ),
             }],
         ),
     ])
