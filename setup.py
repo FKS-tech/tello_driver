@@ -27,6 +27,7 @@ setup(
             'stream_node = tello_driver.stream_node:main',
             'telemetry_node = tello_driver.telemetry_node:main',
             'vision_node = tello_driver.vision_node:main',
+            'visual_servo_node = tello_driver.visual_servo_node:main',
         ],
     },
 )

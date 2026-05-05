@@ -46,3 +46,15 @@ vision_node:
     confidence_threshold: 0.5
     process_every_n_frames: 3
     show_preview: true
+
+visual_servo_node:
+  ros__parameters:
+    target_class_name: ""
+    confidence_threshold: 0.5
+    min_area_ratio: 0.0
+    max_area_ratio: 1.0
+    yaw_kp: 35.0
+    max_yaw_speed: 30.0
+    center_deadband: 0.10
+    detection_timeout: 0.5
+    publish_zero_when_lost: true
