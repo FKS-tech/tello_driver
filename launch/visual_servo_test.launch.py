@@ -11,6 +11,13 @@ def generate_launch_description():
     stream_url = LaunchConfiguration('stream_url')
     enable_sdk_init = LaunchConfiguration('enable_sdk_init')
     enable_stream_on = LaunchConfiguration('enable_stream_on')
+    target_class_name = LaunchConfiguration('target_class_name')
+    confidence_threshold = LaunchConfiguration('confidence_threshold')
+    min_area_ratio = LaunchConfiguration('min_area_ratio')
+    max_area_ratio = LaunchConfiguration('max_area_ratio')
+    yaw_kp = LaunchConfiguration('yaw_kp')
+    max_yaw_speed = LaunchConfiguration('max_yaw_speed')
+    center_deadband = LaunchConfiguration('center_deadband')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -37,6 +44,41 @@ def generate_launch_description():
             'enable_stream_on',
             default_value='false',
             description='Send streamon command when stream_node starts.',
+        ),
+        DeclareLaunchArgument(
+            'target_class_name',
+            default_value='person',
+            description='Target class used by visual_servo_node.',
+        ),
+        DeclareLaunchArgument(
+            'confidence_threshold',
+            default_value='0.6',
+            description='Minimum detection confidence used by visual_servo_node.',
+        ),
+        DeclareLaunchArgument(
+            'min_area_ratio',
+            default_value='0.02',
+            description='Minimum target area ratio used by visual_servo_node.',
+        ),
+        DeclareLaunchArgument(
+            'max_area_ratio',
+            default_value='1.0',
+            description='Maximum target area ratio used by visual_servo_node.',
+        ),
+        DeclareLaunchArgument(
+            'yaw_kp',
+            default_value='35.0',
+            description='Yaw proportional gain used by visual_servo_node.',
+        ),
+        DeclareLaunchArgument(
+            'max_yaw_speed',
+            default_value='30.0',
+            description='Maximum absolute yaw speed used by visual_servo_node.',
+        ),
+        DeclareLaunchArgument(
+            'center_deadband',
+            default_value='0.10',
+            description='Normalized horizontal deadband used by visual_servo_node.',
         ),
 
         Node(
@@ -65,5 +107,14 @@ def generate_launch_description():
             package='tello_driver',
             executable='visual_servo_node',
             output='screen',
+            parameters=[{
+                'target_class_name': target_class_name,
+                'confidence_threshold': ParameterValue(confidence_threshold, value_type=float),
+                'min_area_ratio': ParameterValue(min_area_ratio, value_type=float),
+                'max_area_ratio': ParameterValue(max_area_ratio, value_type=float),
+                'yaw_kp': ParameterValue(yaw_kp, value_type=float),
+                'max_yaw_speed': ParameterValue(max_yaw_speed, value_type=float),
+                'center_deadband': ParameterValue(center_deadband, value_type=float),
+            }],
         ),
     ])
