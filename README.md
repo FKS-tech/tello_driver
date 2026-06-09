@@ -1,8 +1,6 @@
 # tello_driver
 
-Pacote ROS 2 Python para usar um DJI Tello com controle, video, telemetria e visao computacional.
-
-O pacote ainda nao implementa voo autonomo real. A estrutura atual prepara o terreno para isso mantendo os nos existentes e os topicos usados hoje.
+Pacote ROS 2 Python para usar um DJI Tello com controle, video, telemetria, visao computacional e uma ponte segura entre comandos autonomos e RC real.
 
 ## Nos
 
@@ -12,6 +10,7 @@ O pacote ainda nao implementa voo autonomo real. A estrutura atual prepara o ter
 - `vision_node`: assina imagem do Tello, roda YOLO e publica imagem anotada e deteccoes JSON.
 - `qr_node`: detecta e le QR Codes em `/tello/image_raw`, publicando deteccoes em `/vision/qr_codes`.
 - `visual_servo_node`: le deteccoes visuais e calcula comando de centralizacao visual em `/tello/autonomy/cmd_vel`, sem enviar comandos diretamente ao drone.
+- `command_mux_node`: assina comandos autonomos em `/tello/autonomy/cmd_vel`, converte `Twist` para `rc` real, e executa `takeoff`/`land` por topico.
 
 ## Topicos
 
@@ -30,6 +29,9 @@ O pacote ainda nao implementa voo autonomo real. A estrutura atual prepara o ter
 | `/vision/qr_image_annotated` | `sensor_msgs/Image` | publicado | `qr_node` |
 | `/vision/qr_debug` | `std_msgs/String` | publicado | `qr_node` |
 | `/tello/autonomy/cmd_vel` | `geometry_msgs/Twist` | publicado | `visual_servo_node` |
+| `/tello/autonomy/cmd_vel` | `geometry_msgs/Twist` | assinado | `command_mux_node` |
+| `/tello/autonomy/takeoff` | `std_msgs/Empty` | assinado | `command_mux_node` |
+| `/tello/autonomy/land` | `std_msgs/Empty` | assinado | `command_mux_node` |
 | `/tello/autonomy/debug` | `std_msgs/String` | publicado | `visual_servo_node` |
 
 ## Build
@@ -49,6 +51,7 @@ ros2 run tello_driver telemetry_node
 ros2 run tello_driver vision_node
 ros2 run tello_driver qr_node
 ros2 run tello_driver visual_servo_node
+ros2 run tello_driver command_mux_node
 ros2 run tello_driver joy_node
 ```
 
@@ -128,6 +131,13 @@ ros2 topic echo /vision/qr_codes
 ros2 topic echo /vision/qr_debug
 ```
 
+O `qr_node` tenta detectar o mesmo frame em versoes pre-processadas
+(`gray`, `clahe`, `adaptive_threshold` e `upscaled`) para melhorar leituras em
+casos de contraste baixo, QR distante ou pequenas perdas de qualidade. O debug
+em `/vision/qr_debug` indica o metodo que funcionou e lembra apenas para debug o
+ultimo QR decodificado. QR parcialmente fora da imagem ainda pode falhar; o no
+nao publica QR antigo como deteccao atual e nao envia comandos ao drone.
+
 O `visual_servo_node` pode ser ajustado para cenarios com multiplos alvos:
 
 - `target_selection_strategy:=closest_to_center` prefere o alvo mais proximo do centro da imagem.
@@ -159,6 +169,36 @@ Com drone real e stream ligado pelo `stream_node`:
 ros2 launch tello_driver qr_servo_test.launch.py show_preview:=true enable_sdk_init:=true enable_stream_on:=true
 ```
 
+## Comando autonomo real
+
+O `command_mux_node` e a ponte entre decisao autonoma e comando real do Tello. Ele assina `/tello/autonomy/cmd_vel`, converte `geometry_msgs/Twist` para `send_rc(left_right, forward_back, up_down, yaw)` e zera o comando se nao receber mensagem nova dentro de `watchdog_timeout` segundos.
+
+Mapeamento:
+
+| Twist | Tello RC |
+| --- | --- |
+| `linear.x` | frente/tras |
+| `linear.y` | esquerda/direita |
+| `linear.z` | subir/descer |
+| `angular.z` | yaw |
+
+Nao rode `joy_node` e `command_mux_node` ao mesmo tempo como controladores ativos do drone.
+
+Teste sem voo:
+
+```bash
+ros2 run tello_driver command_mux_node
+ros2 topic pub /tello/autonomy/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {z: 0.0}}"
+ros2 topic pub /tello/autonomy/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 20.0, y: 0.0, z: 0.0}, angular: {z: 0.0}}"
+```
+
+Takeoff e land por topico:
+
+```bash
+ros2 topic pub --once /tello/autonomy/takeoff std_msgs/msg/Empty "{}"
+ros2 topic pub --once /tello/autonomy/land std_msgs/msg/Empty "{}"
+```
+
 ## Fluxo QR + servo visual
 
 O `qr_node` le `/tello/image_raw`, detecta QR Codes com OpenCV e publica deteccoes em `/vision/qr_codes`. O `visual_servo_node` pode usar `/vision/qr_codes` como entrada por meio do parametro `input_detection_topic`.
@@ -172,8 +212,10 @@ qr_node
   -> /vision/qr_codes
 visual_servo_node
   -> /tello/autonomy/cmd_vel
+command_mux_node
+  -> rc real / takeoff / land
 mission_node futuro
-  -> ainda nao implementado
+  -> decisao de missao
 ```
 
 Comandos uteis:
@@ -186,7 +228,7 @@ ros2 topic echo /vision/qr_debug
 ros2 topic echo /tello/autonomy/cmd_vel
 ```
 
-Esse launch nao inicia `joy_node` e nao faz o drone obedecer aos comandos publicados pelo servo visual. Ele apenas publica o comando calculado em `/tello/autonomy/cmd_vel`.
+Esse launch nao inicia `joy_node` nem `command_mux_node`; ele apenas publica o comando calculado em `/tello/autonomy/cmd_vel`.
 
 ## Configuracao
 
@@ -196,7 +238,6 @@ Os defaults continuam declarados dentro dos nos. O arquivo `config/tello_default
 
 Ideias planejadas, ainda nao implementadas:
 
-- integracao segura da centralizacao visual com controle real;
 - uso da leitura de QR Code dentro de uma missao;
 - missao simplificada inspirada na Fase 4 da Flying Robot League;
-- criacao futura de `mission_node` e `command_mux_node`.
+- criacao futura de `mission_node`.

@@ -29,6 +29,7 @@ setup(
             'vision_node = tello_driver.vision_node:main',
             'visual_servo_node = tello_driver.visual_servo_node:main',
             'qr_node = tello_driver.qr_node:main',
+            'command_mux_node = tello_driver.command_mux_node:main',
         ],
     },
 )

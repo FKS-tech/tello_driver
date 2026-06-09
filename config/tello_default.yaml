@@ -58,6 +58,12 @@ qr_node:
     publish_empty: true
     publish_undecoded: false
     min_area_ratio: 0.0001
+    use_preprocessing: true
+    try_grayscale: true
+    try_clahe: true
+    try_adaptive_threshold: true
+    try_upscale: true
+    upscale_factor: 1.5
 
 visual_servo_node:
   ros__parameters:
@@ -75,3 +81,19 @@ visual_servo_node:
     enable_target_lock: true
     target_lock_timeout: 1.0
     target_lock_max_error_distance: 0.35
+
+command_mux_node:
+  ros__parameters:
+    tello_ip: "192.168.10.1"
+    tello_port: 8889
+    local_port: 9002
+    sdk_timeout: 5.0
+    enable_sdk_init: true
+    cmd_vel_topic: "/tello/autonomy/cmd_vel"
+    takeoff_topic: "/tello/autonomy/takeoff"
+    land_topic: "/tello/autonomy/land"
+    rc_period: 0.05
+    watchdog_timeout: 0.4
+    command_cooldown: 3.0
+    takeoff_rc_pause: 3.0
+    land_rc_pause: 2.0
