@@ -8,7 +8,8 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     show_preview = LaunchConfiguration('show_preview')
     model_path = LaunchConfiguration('model_path')
-    enable_sdk_init = LaunchConfiguration('enable_sdk_init')
+    stream_enable_sdk_init = LaunchConfiguration('stream_enable_sdk_init')
+    command_mux_enable_sdk_init = LaunchConfiguration('command_mux_enable_sdk_init')
     enable_stream_on = LaunchConfiguration('enable_stream_on')
     start_armed = LaunchConfiguration('start_armed')
     max_xy_speed = LaunchConfiguration('max_xy_speed')
@@ -27,9 +28,14 @@ def generate_launch_description():
             description='YOLO model used by vision_node.',
         ),
         DeclareLaunchArgument(
-            'enable_sdk_init',
+            'stream_enable_sdk_init',
             default_value='true',
-            description='Send SDK command initialization when stream_node and command_mux_node start.',
+            description='Send SDK command initialization when stream_node starts.',
+        ),
+        DeclareLaunchArgument(
+            'command_mux_enable_sdk_init',
+            default_value='false',
+            description='Send SDK command initialization when command_mux_node starts.',
         ),
         DeclareLaunchArgument(
             'enable_stream_on',
@@ -63,7 +69,10 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'show_preview': ParameterValue(show_preview, value_type=bool),
-                'enable_sdk_init': ParameterValue(enable_sdk_init, value_type=bool),
+                'enable_sdk_init': ParameterValue(
+                    stream_enable_sdk_init,
+                    value_type=bool,
+                ),
                 'enable_stream_on': ParameterValue(enable_stream_on, value_type=bool),
             }],
         ),
@@ -98,7 +107,10 @@ def generate_launch_description():
             executable='command_mux_node',
             output='screen',
             parameters=[{
-                'enable_sdk_init': ParameterValue(enable_sdk_init, value_type=bool),
+                'enable_sdk_init': ParameterValue(
+                    command_mux_enable_sdk_init,
+                    value_type=bool,
+                ),
                 'start_armed': ParameterValue(start_armed, value_type=bool),
                 'max_xy_speed': ParameterValue(max_xy_speed, value_type=float),
                 'max_z_speed': ParameterValue(max_z_speed, value_type=float),

@@ -87,16 +87,28 @@ Para testar o launch sem drone conectado, desative os comandos SDK do `stream_no
 ros2 launch tello_driver tello_basic.launch.py show_preview:=false enable_sdk_init:=false enable_stream_on:=false
 ```
 
-O launch autonomo seguro inicia video, telemetria, visao, QR e `command_mux_node`, mas nao inicia joystick:
+O launch autonomo seguro inicia video, telemetria, visao, QR e `command_mux_node`, mas nao inicia joystick. Nesse launch, por padrao, o `stream_node` envia `command` e `streamon`; o `command_mux_node` nao envia `command` e assume que o SDK ja foi ativado pelo `stream_node`. Isso evita disputa entre dois nos inicializando o SDK ao mesmo tempo.
 
 ```bash
-ros2 launch tello_driver tello_autonomy.launch.py
+ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false start_armed:=false
+```
+
+Teste seco sem drone, sem `command`/`streamon`:
+
+```bash
+ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false stream_enable_sdk_init:=false enable_stream_on:=false command_mux_enable_sdk_init:=false start_armed:=false
+```
+
+Teste isolado do `command_mux_node` inicializando SDK sozinho, sem `stream_node` enviar `command`/`streamon`:
+
+```bash
+ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false stream_enable_sdk_init:=false enable_stream_on:=false command_mux_enable_sdk_init:=true start_armed:=false
 ```
 
 Para teste controlado, ele pode iniciar armado:
 
 ```bash
-ros2 launch tello_driver tello_autonomy.launch.py start_armed:=true
+ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false start_armed:=true
 ```
 
 O launch completo `tello_bringup.launch.py` inicia a pilha principal de uso com joystick:
