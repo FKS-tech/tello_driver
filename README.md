@@ -10,7 +10,7 @@ Pacote ROS 2 Python para usar um DJI Tello com controle, video, telemetria, visa
 - `vision_node`: assina imagem do Tello, roda YOLO e publica imagem anotada e deteccoes JSON.
 - `qr_node`: detecta e le QR Codes em `/tello/image_raw`, publicando deteccoes em `/vision/qr_codes`.
 - `visual_servo_node`: le deteccoes visuais e calcula comando de centralizacao visual em `/tello/autonomy/cmd_vel`, sem enviar comandos diretamente ao drone.
-- `command_mux_node`: assina comandos autonomos em `/tello/autonomy/cmd_vel`, converte `Twist` para `rc` real, e executa `takeoff`/`land` por topico.
+- `command_mux_node`: assina comandos autonomos em `/tello/autonomy/cmd_vel`, converte `Twist` para `rc` real, e executa `takeoff`/`land`/`emergency` por topico com modo armado/desarmado.
 
 ## Topicos
 
@@ -32,6 +32,10 @@ Pacote ROS 2 Python para usar um DJI Tello com controle, video, telemetria, visa
 | `/tello/autonomy/cmd_vel` | `geometry_msgs/Twist` | assinado | `command_mux_node` |
 | `/tello/autonomy/takeoff` | `std_msgs/Empty` | assinado | `command_mux_node` |
 | `/tello/autonomy/land` | `std_msgs/Empty` | assinado | `command_mux_node` |
+| `/tello/autonomy/enable` | `std_msgs/Empty` | assinado | `command_mux_node` |
+| `/tello/autonomy/disable` | `std_msgs/Empty` | assinado | `command_mux_node` |
+| `/tello/autonomy/stop` | `std_msgs/Empty` | assinado | `command_mux_node` |
+| `/tello/autonomy/emergency` | `std_msgs/Empty` | assinado | `command_mux_node` |
 | `/tello/autonomy/debug` | `std_msgs/String` | publicado | `visual_servo_node` |
 
 ## Build
@@ -81,6 +85,18 @@ Para testar o launch sem drone conectado, desative os comandos SDK do `stream_no
 
 ```bash
 ros2 launch tello_driver tello_basic.launch.py show_preview:=false enable_sdk_init:=false enable_stream_on:=false
+```
+
+O launch autonomo seguro inicia video, telemetria, visao, QR e `command_mux_node`, mas nao inicia joystick:
+
+```bash
+ros2 launch tello_driver tello_autonomy.launch.py
+```
+
+Para teste controlado, ele pode iniciar armado:
+
+```bash
+ros2 launch tello_driver tello_autonomy.launch.py start_armed:=true
 ```
 
 O launch completo `tello_bringup.launch.py` inicia a pilha principal de uso com joystick:
@@ -173,6 +189,8 @@ ros2 launch tello_driver qr_servo_test.launch.py show_preview:=true enable_sdk_i
 
 O `command_mux_node` e a ponte entre decisao autonoma e comando real do Tello. Ele assina `/tello/autonomy/cmd_vel`, converte `geometry_msgs/Twist` para `send_rc(left_right, forward_back, up_down, yaw)` e zera o comando se nao receber mensagem nova dentro de `watchdog_timeout` segundos.
 
+O `Twist` aqui nao esta em m/s. Ele usa a escala RC do Tello, de `-100` a `100`, com limites adicionais por parametro (`max_xy_speed`, `max_z_speed`, `max_yaw_speed`) para reduzir o risco de comando alto por erro de autonomia.
+
 Mapeamento:
 
 | Twist | Tello RC |
@@ -184,19 +202,27 @@ Mapeamento:
 
 Nao rode `joy_node` e `command_mux_node` ao mesmo tempo como controladores ativos do drone.
 
+Por padrao, o mux inicia desarmado (`start_armed:=false`). Desarmado, ele envia RC zero e ignora `/tello/autonomy/cmd_vel`. Depois de publicar `/tello/autonomy/enable`, o mux passa a aceitar `cmd_vel`. O `/tello/autonomy/disable` volta a ignorar comandos e manda zero; `/tello/autonomy/stop` mantem o estado armado/desarmado atual, mas zera o RC imediatamente. `Land` funciona mesmo desarmado; `takeoff` exige autonomia armada; `emergency` funciona mesmo desarmado.
+
 Teste sem voo:
 
 ```bash
 ros2 run tello_driver command_mux_node
-ros2 topic pub /tello/autonomy/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {z: 0.0}}"
+ros2 topic pub --once /tello/autonomy/enable std_msgs/msg/Empty "{}"
+ros2 topic pub --once /tello/autonomy/takeoff std_msgs/msg/Empty "{}"
 ros2 topic pub /tello/autonomy/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 20.0, y: 0.0, z: 0.0}, angular: {z: 0.0}}"
+ros2 topic pub --once /tello/autonomy/stop std_msgs/msg/Empty "{}"
+ros2 topic pub --once /tello/autonomy/land std_msgs/msg/Empty "{}"
 ```
 
-Takeoff e land por topico:
+Comandos de seguranca:
 
 ```bash
-ros2 topic pub --once /tello/autonomy/takeoff std_msgs/msg/Empty "{}"
+ros2 topic pub --once /tello/autonomy/enable std_msgs/msg/Empty "{}"
+ros2 topic pub --once /tello/autonomy/disable std_msgs/msg/Empty "{}"
+ros2 topic pub --once /tello/autonomy/stop std_msgs/msg/Empty "{}"
 ros2 topic pub --once /tello/autonomy/land std_msgs/msg/Empty "{}"
+ros2 topic pub --once /tello/autonomy/emergency std_msgs/msg/Empty "{}"
 ```
 
 ## Fluxo QR + servo visual

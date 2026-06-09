@@ -92,8 +92,16 @@ command_mux_node:
     cmd_vel_topic: "/tello/autonomy/cmd_vel"
     takeoff_topic: "/tello/autonomy/takeoff"
     land_topic: "/tello/autonomy/land"
+    emergency_topic: "/tello/autonomy/emergency"
+    enable_topic: "/tello/autonomy/enable"
+    disable_topic: "/tello/autonomy/disable"
+    stop_topic: "/tello/autonomy/stop"
     rc_period: 0.05
     watchdog_timeout: 0.4
     command_cooldown: 3.0
     takeoff_rc_pause: 3.0
     land_rc_pause: 2.0
+    start_armed: false
+    max_xy_speed: 30.0
+    max_z_speed: 25.0
+    max_yaw_speed: 30.0
