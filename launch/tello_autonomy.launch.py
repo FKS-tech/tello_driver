@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -11,6 +12,8 @@ def generate_launch_description():
     stream_enable_sdk_init = LaunchConfiguration('stream_enable_sdk_init')
     command_mux_enable_sdk_init = LaunchConfiguration('command_mux_enable_sdk_init')
     enable_stream_on = LaunchConfiguration('enable_stream_on')
+    enable_landing_base_node = LaunchConfiguration('enable_landing_base_node')
+    landing_base_publish_mask = LaunchConfiguration('landing_base_publish_mask')
     start_armed = LaunchConfiguration('start_armed')
     max_xy_speed = LaunchConfiguration('max_xy_speed')
     max_z_speed = LaunchConfiguration('max_z_speed')
@@ -41,6 +44,16 @@ def generate_launch_description():
             'enable_stream_on',
             default_value='true',
             description='Send streamon command when stream_node starts.',
+        ),
+        DeclareLaunchArgument(
+            'enable_landing_base_node',
+            default_value='true',
+            description='Start landing_base_node for blue/yellow landing base detection.',
+        ),
+        DeclareLaunchArgument(
+            'landing_base_publish_mask',
+            default_value='false',
+            description='Publish the landing base combined mask for calibration.',
         ),
         DeclareLaunchArgument(
             'start_armed',
@@ -99,6 +112,20 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'show_preview': ParameterValue(show_preview, value_type=bool),
+            }],
+        ),
+
+        Node(
+            package='tello_driver',
+            executable='landing_base_node',
+            output='screen',
+            condition=IfCondition(enable_landing_base_node),
+            parameters=[{
+                'show_preview': ParameterValue(show_preview, value_type=bool),
+                'publish_mask': ParameterValue(
+                    landing_base_publish_mask,
+                    value_type=bool,
+                ),
             }],
         ),
 

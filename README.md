@@ -2,6 +2,8 @@
 
 Pacote ROS 2 Python para usar um DJI Tello com controle, video, telemetria, visao computacional e uma ponte segura entre comandos autonomos e RC real.
 
+English documentation: [README.en.md](README.en.md)
+
 ## Nos
 
 - `joy_node`: assina `/joy`, aplica deadzone, envia comandos `rc` para o Tello e usa botoes para `takeoff` e `land`.
@@ -9,6 +11,7 @@ Pacote ROS 2 Python para usar um DJI Tello com controle, video, telemetria, visa
 - `telemetry_node`: escuta telemetria UDP na porta `8890` e publica dados brutos e JSON.
 - `vision_node`: assina imagem do Tello, roda YOLO e publica imagem anotada e deteccoes JSON.
 - `qr_node`: detecta e le QR Codes em `/tello/image_raw`, publicando deteccoes em `/vision/qr_codes`.
+- `landing_base_node`: detecta bases azul/amarelo por HSV/OpenCV em `/tello/image_raw`, publicando deteccoes em `/vision/landing_base`.
 - `visual_servo_node`: le deteccoes visuais e calcula comando de centralizacao visual em `/tello/autonomy/cmd_vel`, sem enviar comandos diretamente ao drone.
 - `command_mux_node`: assina comandos autonomos em `/tello/autonomy/cmd_vel`, converte `Twist` para `rc` real, e executa `takeoff`/`land`/`emergency` por topico com modo armado/desarmado.
 
@@ -28,6 +31,10 @@ Pacote ROS 2 Python para usar um DJI Tello com controle, video, telemetria, visa
 | `/vision/qr_codes` | `std_msgs/String` | assinado | `visual_servo_node` opcional |
 | `/vision/qr_image_annotated` | `sensor_msgs/Image` | publicado | `qr_node` |
 | `/vision/qr_debug` | `std_msgs/String` | publicado | `qr_node` |
+| `/vision/landing_base` | `std_msgs/String` | publicado | `landing_base_node` |
+| `/vision/landing_base_image_annotated` | `sensor_msgs/Image` | publicado | `landing_base_node` |
+| `/vision/landing_base_debug` | `std_msgs/String` | publicado | `landing_base_node` |
+| `/vision/landing_base_mask` | `sensor_msgs/Image` | publicado opcional | `landing_base_node` |
 | `/tello/autonomy/cmd_vel` | `geometry_msgs/Twist` | publicado | `visual_servo_node` |
 | `/tello/autonomy/cmd_vel` | `geometry_msgs/Twist` | assinado | `command_mux_node` |
 | `/tello/autonomy/takeoff` | `std_msgs/Empty` | assinado | `command_mux_node` |
@@ -38,6 +45,32 @@ Pacote ROS 2 Python para usar um DJI Tello com controle, video, telemetria, visa
 | `/tello/autonomy/emergency` | `std_msgs/Empty` | assinado | `command_mux_node` |
 | `/tello/autonomy/debug` | `std_msgs/String` | publicado | `visual_servo_node` |
 
+## Arquitetura
+
+O pacote separa percepcao, decisao e execucao. Os nos de visao nunca enviam
+comandos diretamente ao drone; eles publicam deteccoes. O `visual_servo_node`
+transforma uma deteccao visual em `cmd_vel`, e o `command_mux_node` e a unica
+ponte para comandos reais do Tello na pilha autonoma.
+
+```text
+stream_node
+  -> /tello/image_raw
+     -> vision_node         -> /vision/detections
+     -> qr_node             -> /vision/qr_codes
+     -> landing_base_node   -> /vision/landing_base
+
+visual_servo_node
+  -> /tello/autonomy/cmd_vel
+
+mission_node futuro
+  -> /tello/autonomy/enable
+  -> /tello/autonomy/takeoff
+  -> /tello/autonomy/land
+
+command_mux_node
+  -> rc real / takeoff / land / emergency
+```
+
 ## Build
 
 Na raiz do workspace:
@@ -47,6 +80,16 @@ colcon build --packages-select tello_driver
 source install/setup.bash
 ```
 
+## Testes
+
+Os testes cobrem funcoes matematicas compartilhadas e a deteccao sintetica de
+base azul/amarelo sem precisar de drone conectado:
+
+```bash
+colcon test --packages-select tello_driver
+colcon test-result --verbose
+```
+
 ## Execucao basica
 
 ```bash
@@ -54,6 +97,7 @@ ros2 run tello_driver stream_node
 ros2 run tello_driver telemetry_node
 ros2 run tello_driver vision_node
 ros2 run tello_driver qr_node
+ros2 run tello_driver landing_base_node
 ros2 run tello_driver visual_servo_node
 ros2 run tello_driver command_mux_node
 ros2 run tello_driver joy_node
@@ -87,7 +131,7 @@ Para testar o launch sem drone conectado, desative os comandos SDK do `stream_no
 ros2 launch tello_driver tello_basic.launch.py show_preview:=false enable_sdk_init:=false enable_stream_on:=false
 ```
 
-O launch autonomo seguro inicia video, telemetria, visao, QR e `command_mux_node`, mas nao inicia joystick. Nesse launch, por padrao, o `stream_node` envia `command` e `streamon`; o `command_mux_node` nao envia `command` e assume que o SDK ja foi ativado pelo `stream_node`. Isso evita disputa entre dois nos inicializando o SDK ao mesmo tempo.
+O launch autonomo seguro inicia video, telemetria, visao, QR, detector de base e `command_mux_node`, mas nao inicia joystick. Nesse launch, por padrao, o `stream_node` envia `command` e `streamon`; o `command_mux_node` nao envia `command` e assume que o SDK ja foi ativado pelo `stream_node`. Isso evita disputa entre dois nos inicializando o SDK ao mesmo tempo.
 
 ```bash
 ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false start_armed:=false
@@ -109,6 +153,12 @@ Para teste controlado, ele pode iniciar armado:
 
 ```bash
 ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false start_armed:=true
+```
+
+Para calibrar a mascara da base durante o launch autonomo:
+
+```bash
+ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false landing_base_publish_mask:=true start_armed:=false
 ```
 
 O launch completo `tello_bringup.launch.py` inicia a pilha principal de uso com joystick:
@@ -158,6 +208,76 @@ ros2 run tello_driver qr_node
 ros2 topic echo /vision/qr_codes
 ros2 topic echo /vision/qr_debug
 ```
+
+Para observar bases de pouso azul/amarelo:
+
+```bash
+ros2 run tello_driver landing_base_node
+ros2 topic echo /vision/landing_base
+ros2 topic echo /vision/landing_base_debug
+```
+
+O `landing_base_node` usa OpenCV, nao YOLO. Ele segmenta amarelo e azul em HSV,
+limpa as mascaras com morfologia, procura contornos na mascara combinada e
+publica o maior candidato valido. A deteccao segue o mesmo padrao JSON do
+`vision_node`, sempre como lista:
+
+```json
+[
+  {
+    "class_id": -1,
+    "class_name": "landing_base",
+    "confidence": 0.82,
+    "bbox_xyxy": [120.0, 180.0, 520.0, 430.0],
+    "area_ratio": 0.18,
+    "center_px": [320.0, 305.0],
+    "error_norm": [0.0, 0.22],
+    "frame_size": [640, 480],
+    "yellow_ratio_in_bbox": 0.12,
+    "blue_ratio_in_bbox": 0.55
+  }
+]
+```
+
+Tambem existe um launch leve para testar somente stream, telemetria e detector
+de base, sem YOLO, sem QR e sem `command_mux_node`:
+
+```bash
+ros2 launch tello_driver landing_base_test.launch.py show_preview:=false
+ros2 topic echo /vision/landing_base
+ros2 topic hz /vision/landing_base
+ros2 topic list | grep landing
+```
+
+Topicos esperados:
+
+```text
+/vision/landing_base
+/vision/landing_base_debug
+/vision/landing_base_image_annotated
+```
+
+Para publicar tambem a mascara combinada azul/amarelo:
+
+```bash
+ros2 launch tello_driver landing_base_test.launch.py show_preview:=false publish_mask:=true
+ros2 topic echo /vision/landing_base_debug
+```
+
+Com `publish_mask:=true`, o topico `/vision/landing_base_mask` publica a mascara
+BGR da segmentacao combinada. Use ele para ajustar estes parametros sem mexer no
+codigo:
+
+```bash
+ros2 run tello_driver landing_base_node --ros-args \
+  -p publish_mask:=true \
+  -p yellow_lower_h:=20 -p yellow_upper_h:=40 \
+  -p blue_lower_h:=90 -p blue_upper_h:=135
+```
+
+Se a base oficial ainda nao estiver disponivel, teste com cartolina ou tecido
+azul e fita amarela. Um quadrado azul com cruz, circulo ou linhas amarelas ja e
+suficiente para ajustar os limiares iniciais.
 
 O `qr_node` tenta detectar o mesmo frame em versoes pre-processadas
 (`gray`, `clahe`, `adaptive_threshold` e `upscaled`) para melhorar leituras em
@@ -271,6 +391,11 @@ Esse launch nao inicia `joy_node` nem `command_mux_node`; ele apenas publica o c
 ## Configuracao
 
 Os defaults continuam declarados dentro dos nos. O arquivo `config/tello_default.yaml` existe como referencia opcional para facilitar ajustes futuros.
+
+Para `landing_base_node`, o YAML inclui os limiares HSV de amarelo e azul,
+limites de area, morfologia e `publish_mask`. Os defaults sao permissivos para
+video ruim do Tello; ajuste primeiro observando `/vision/landing_base_debug` e,
+quando necessario, `/vision/landing_base_mask`.
 
 ## Proximos passos de autonomia
 

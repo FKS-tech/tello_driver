@@ -65,6 +65,35 @@ qr_node:
     try_upscale: true
     upscale_factor: 1.5
 
+landing_base_node:
+  ros__parameters:
+    input_topic: "/tello/image_raw"
+    output_detection_topic: "/vision/landing_base"
+    output_image_topic: "/vision/landing_base_image_annotated"
+    debug_topic: "/vision/landing_base_debug"
+    output_mask_topic: "/vision/landing_base_mask"
+    show_preview: false
+    process_every_n_frames: 1
+    min_area_ratio: 0.01
+    max_area_ratio: 0.80
+    min_yellow_ratio_in_bbox: 0.02
+    min_blue_ratio_in_bbox: 0.05
+    morph_kernel_size: 5
+    publish_empty: true
+    publish_mask: false
+    yellow_lower_h: 20
+    yellow_lower_s: 80
+    yellow_lower_v: 80
+    yellow_upper_h: 40
+    yellow_upper_s: 255
+    yellow_upper_v: 255
+    blue_lower_h: 90
+    blue_lower_s: 60
+    blue_lower_v: 50
+    blue_upper_h: 135
+    blue_upper_s: 255
+    blue_upper_v: 255
+
 visual_servo_node:
   ros__parameters:
     input_detection_topic: "/vision/detections"
