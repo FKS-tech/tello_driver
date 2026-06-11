@@ -43,7 +43,10 @@ key_mapping = {
 #=======================================================#
 
 class CommandInterface:
+    """Cliente UDP simples para comandos diretos do SDK do Tello."""
+
     def __init__(self, ip: str = "192.168.10.1", port: int = 8889):
+        """Abre socket UDP e ativa o modo SDK."""
         self.ip = ip
         self.port = port
         self.address = (self.ip, self.port)
@@ -55,9 +58,11 @@ class CommandInterface:
         self.activate_sdk()
 
     def activate_sdk(self):
+        """Envia o comando `command` para entrar no modo SDK."""
         return self.send_command("command")
     
     def send_command(self, command: str):
+        """Envia um comando bloqueante e retorna a resposta textual."""
         try:
             self.socket.sendto(command.encode(), self.address)
             response, _ = self.socket.recvfrom(1024)
@@ -71,40 +76,52 @@ class CommandInterface:
     #===================================================#
 
     def takeoff(self):
+        """Solicita decolagem pelo SDK."""
         return self.send_command("takeoff")
     
     def land(self):
+        """Solicita pouso pelo SDK."""
         return self.send_command("land")
     
     def move(self, a, b, c, d):
+        """Envia comando RC continuo, limitando cada eixo em -100..100."""
         def clamp(x):
+            """Garante que o SDK receba cada eixo no intervalo permitido."""
             return max(-100, min(100, int(x)))
          
         command = f"rc {clamp(a)} {clamp(b)} {clamp(c)} {clamp(d)}"
         self.socket.sendto(command.encode(), self.address)
 
     def foward(self, distance: int):
+        """Move para frente por distancia em centimetros."""
         return self.send_command(f"forward {distance}")
     
     def back(self, distance: int):
+        """Move para tras por distancia em centimetros."""
         return self.send_command(f"back {distance}")
     
     def left(self, distance: int):
+        """Move para esquerda por distancia em centimetros."""
         return self.send_command(f"left {distance}")
     
     def right(self, distance: int):
+        """Move para direita por distancia em centimetros."""
         return self.send_command(f"right {distance}")
     
     def up(self, distance: int):
+        """Sobe por distancia em centimetros."""
         return self.send_command(f"up {distance}")
     
     def down(self, distance: int):
+        """Desce por distancia em centimetros."""
         return self.send_command(f"down {distance}")
     
     def cw(self, angle: int):
+        """Gira no sentido horario em graus."""
         return self.send_command(f"cw {angle}")
     
     def ccw(self, angle: int):
+        """Gira no sentido anti-horario em graus."""
         return self.send_command(f"ccw {angle}")
 
 #====================================================#
@@ -112,7 +129,10 @@ class CommandInterface:
 #====================================================#
 
 class KeyboardInput:
+    """Le teclas do terminal sem exigir Enter entre comandos."""
+
     def __init__(self):
+        """Salva configuracao do terminal quando stdin e TTY."""
         if sys.stdin.isatty():
             self.settings = termios.tcgetattr(sys.stdin)
             self.is_tty = True
@@ -121,6 +141,7 @@ class KeyboardInput:
             self.is_tty = False
 
     def get_key(self):
+        """Retorna uma tecla pressionada ou string vazia se nao houver tecla."""
         tty.setraw(sys.stdin.fileno())
         rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
         key = sys.stdin.read(1) if rlist else ''
@@ -128,6 +149,7 @@ class KeyboardInput:
         return key
 
     def restore_terminal(self):
+        """Restaura configuracao original do terminal."""
         if self.is_tty:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
 
@@ -137,7 +159,10 @@ class KeyboardInput:
 
 
 class ControlNode(Node):
+    """No manual legado para controle por teclado e servicos Trigger."""
+
     def __init__(self):
+        """Cria interface SDK direta, servicos takeoff/land e timer de teclado."""
         super().__init__('control_node')
         self.command_interface = CommandInterface()
 
@@ -156,12 +181,14 @@ class ControlNode(Node):
 
 
     def takeoff_callback(self, request, response):
+        """Servico ROS que encaminha takeoff ao SDK."""
         result = self.command_interface.takeoff()
         response.success = (result == "ok")
         response.message = result
         return response
 
     def land_callback(self, request, response):
+        """Servico ROS que encaminha land ao SDK."""
         result = self.command_interface.land()
         response.success = (result == "ok")
         response.message = result
@@ -169,6 +196,7 @@ class ControlNode(Node):
 
 
     def read_keyboard(self):
+        """Le teclado e converte teclas mapeadas em comandos RC."""
         key = self.keyboard.get_key()
         if key == '\x03':  # CTRL+C
             rclpy.shutdown()
@@ -185,6 +213,7 @@ class ControlNode(Node):
 
     
 def main(args=None):
+    """Start the legacy keyboard/service control node."""
     rclpy.init(args=args)
     control_node = ControlNode()
     executor = MultiThreadedExecutor()

@@ -13,8 +13,9 @@ Portuguese documentation: [README.md](README.md)
 - `telemetry_node`: listens to UDP telemetry on port `8890` and publishes raw and JSON telemetry.
 - `vision_node`: subscribes to Tello images, runs YOLO, and publishes annotated images plus JSON detections.
 - `qr_node`: detects and decodes QR Codes from `/tello/image_raw`, publishing detections on `/vision/qr_codes`.
-- `landing_base_node`: detects blue/yellow landing bases with HSV/OpenCV from `/tello/image_raw`, publishing detections on `/vision/landing_base`.
+- `landing_base_node`: detects blue/yellow bases with OpenCV from `/tello/image_raw`, validating color, shape, and pattern to publish `landing_base` or `takeoff_base` on `/vision/landing_base`.
 - `visual_servo_node`: reads visual detections and computes visual-centering commands on `/tello/autonomy/cmd_vel`; it does not send commands directly to the drone.
+- `mission_node`: runs a safe mission state machine, consuming telemetry and landing-base detections to publish status, a simple visual map, and either real commands or command previews in `dry_run`.
 - `command_mux_node`: subscribes to autonomous commands on `/tello/autonomy/cmd_vel`, converts `Twist` to real Tello `rc`, and executes `takeoff`/`land`/`emergency` through topics with an armed/disarmed mode.
 
 ## Topics
@@ -26,6 +27,7 @@ Portuguese documentation: [README.md](README.md)
 | `/tello/image_raw` | `sensor_msgs/Image` | subscribed | `vision_node`, `qr_node`, `landing_base_node` |
 | `/tello/telemetry/raw` | `std_msgs/String` | published | `telemetry_node` |
 | `/tello/telemetry/json` | `std_msgs/String` | published | `telemetry_node` |
+| `/tello/telemetry/json` | `std_msgs/String` | subscribed | `mission_node` |
 | `/vision/image_annotated` | `sensor_msgs/Image` | published | `vision_node` |
 | `/vision/detections` | `std_msgs/String` | published | `vision_node` |
 | `/vision/detections` | `std_msgs/String` | subscribed | `visual_servo_node` |
@@ -34,6 +36,7 @@ Portuguese documentation: [README.md](README.md)
 | `/vision/qr_image_annotated` | `sensor_msgs/Image` | published | `qr_node` |
 | `/vision/qr_debug` | `std_msgs/String` | published | `qr_node` |
 | `/vision/landing_base` | `std_msgs/String` | published | `landing_base_node` |
+| `/vision/landing_base` | `std_msgs/String` | subscribed | `mission_node` |
 | `/vision/landing_base_image_annotated` | `sensor_msgs/Image` | published | `landing_base_node` |
 | `/vision/landing_base_debug` | `std_msgs/String` | published | `landing_base_node` |
 | `/vision/landing_base_mask` | `sensor_msgs/Image` | optionally published | `landing_base_node` |
@@ -46,6 +49,12 @@ Portuguese documentation: [README.md](README.md)
 | `/tello/autonomy/stop` | `std_msgs/Empty` | subscribed | `command_mux_node` |
 | `/tello/autonomy/emergency` | `std_msgs/Empty` | subscribed | `command_mux_node` |
 | `/tello/autonomy/debug` | `std_msgs/String` | published | `visual_servo_node` |
+| `/mission/start` | `std_msgs/Bool` | subscribed | `mission_node` |
+| `/mission/abort` | `std_msgs/Empty` | subscribed | `mission_node` |
+| `/mission/reset` | `std_msgs/Empty` | subscribed | `mission_node` |
+| `/mission/status` | `std_msgs/String` | published | `mission_node` |
+| `/mission/event` | `std_msgs/String` | published | `mission_node` |
+| `/mission/map` | `std_msgs/String` | published | `mission_node` |
 
 ## Architecture
 
@@ -62,13 +71,16 @@ stream_node
      -> qr_node             -> /vision/qr_codes
      -> landing_base_node   -> /vision/landing_base
 
-visual_servo_node
-  -> /tello/autonomy/cmd_vel
-
-future mission_node
+mission_node
+  -> /mission/status
+  -> /mission/map
   -> /tello/autonomy/enable
   -> /tello/autonomy/takeoff
+  -> /tello/autonomy/cmd_vel
   -> /tello/autonomy/land
+
+optional visual_servo_node
+  -> /tello/autonomy/cmd_vel
 
 command_mux_node
   -> real rc / takeoff / land / emergency
@@ -85,8 +97,9 @@ source install/setup.bash
 
 ## Tests
 
-The current tests cover shared visual math and a synthetic blue/yellow landing
-base detector case without requiring a connected drone:
+The current tests cover shared visual math, a synthetic blue/yellow landing-base
+detector case, and safe `mission_node` helpers without requiring a connected
+drone:
 
 ```bash
 colcon test --packages-select tello_driver
@@ -101,6 +114,7 @@ ros2 run tello_driver telemetry_node
 ros2 run tello_driver vision_node
 ros2 run tello_driver qr_node
 ros2 run tello_driver landing_base_node
+ros2 run tello_driver mission_node
 ros2 run tello_driver visual_servo_node
 ros2 run tello_driver command_mux_node
 ros2 run tello_driver joy_node
@@ -149,12 +163,49 @@ Enable the landing-base mask while keeping the command mux disarmed:
 ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false landing_base_publish_mask:=true start_armed:=false
 ```
 
+`mission_node` is disabled by default in the autonomous launch. Start the
+`phase1_demo` mission in safe dry-run mode:
+
+```bash
+ros2 launch tello_driver tello_autonomy.launch.py show_preview:=false enable_mission_node:=true mission_dry_run:=true start_armed:=false
+```
+
+In `dry_run`, `mission_node` does not publish `cmd_vel`, `takeoff`, `land`,
+`enable`, `disable`, or `stop`. It only publishes status, events, a simple map,
+and `cmd_preview` showing what it would publish if `dry_run:=false`.
+
+Run only the mission node:
+
+```bash
+ros2 run tello_driver mission_node --ros-args -p dry_run:=true -p mission_id:=phase1_demo
+ros2 topic pub --once /mission/start std_msgs/msg/Bool "{data: true}"
+ros2 topic echo /mission/status
+ros2 topic echo /mission/map
+ros2 topic echo /mission/event
+```
+
+Current `phase1_demo` states:
+
+```text
+IDLE -> ARM -> TAKEOFF -> STABILIZE -> SCAN_ARENA -> SELECT_BASE
+  -> ALIGN_BASE -> APPROACH_BASE -> LAND -> FINISHED
+```
+
+The current map is visual, not metric: it groups seen bases by class and
+normalized image position. Do not use it as real drone `x,y` coordinates.
+
 ## Landing Base Detection
 
-The `landing_base_node` uses OpenCV instead of YOLO. It segments yellow and blue
-in HSV, cleans the masks with morphology, finds contours in the combined mask,
-and publishes the largest valid candidate. Detections follow the same JSON list
-shape used by `vision_node`:
+The `landing_base_node` uses OpenCV instead of YOLO. HSV color segmentation is
+only the candidate generator; the final decision also validates shape, internal
+pattern, exposure, and temporal stability. The node looks for:
+
+- a square moving base as `landing_base`;
+- a rectangular takeoff base as `takeoff_base`, on the same topic.
+
+The expected moving-base pattern is a yellow border, blue field, yellow circle,
+and central yellow cross. Detections follow the same JSON list shape used by
+`vision_node`:
 
 ```json
 [
@@ -164,14 +215,26 @@ shape used by `vision_node`:
     "confidence": 0.82,
     "bbox_xyxy": [120.0, 180.0, 520.0, 430.0],
     "area_ratio": 0.18,
+    "aspect_ratio": 1.02,
+    "rectangularity": 0.95,
     "center_px": [320.0, 305.0],
     "error_norm": [0.0, 0.22],
     "frame_size": [640, 480],
     "yellow_ratio_in_bbox": 0.12,
-    "blue_ratio_in_bbox": 0.55
+    "blue_ratio_in_bbox": 0.55,
+    "color_score": 0.92,
+    "shape_score": 0.94,
+    "pattern_score": 0.88,
+    "temporal_hits": 2,
+    "temporal_score": 1.0,
+    "overexposed_ratio": 0.03
   }
 ]
 ```
+
+By default, a candidate must appear in at least 2 recent frames before it is
+published. This reduces one-frame false positives caused by reflection,
+compression artifacts, or blur.
 
 Run only stream, telemetry, and landing-base detection:
 
@@ -198,8 +261,9 @@ ros2 run tello_driver landing_base_node --ros-args \
 ```
 
 If the official landing base is not available, use blue cardboard/fabric and
-yellow tape. A blue square with a yellow cross, circle, or lines is enough for
-initial threshold tuning.
+yellow tape. Try to reproduce the yellow border, blue field, yellow circle, and
+central cross; that tests the stronger detector much better than loose blue and
+yellow patches.
 
 ## QR Detection And Visual Servo
 
@@ -271,14 +335,21 @@ Defaults are still declared inside the nodes. The optional
 tuning.
 
 For `landing_base_node`, the YAML includes yellow/blue HSV thresholds, area
-limits, morphology settings, and `publish_mask`. Start by watching
+limits, minimum color/shape/pattern scores, overexposure limits, temporal
+parameters, morphology settings, and `publish_mask`. Start by watching
 `/vision/landing_base_debug`, then enable `/vision/landing_base_mask` when you
 need to tune color thresholds.
+
+For `mission_node`, the YAML includes the `phase1_demo` mission, `dry_run`,
+control/status/map topics, and initial scan, alignment, and approach gains. The
+defaults remain safe: `dry_run: true` and the autonomous launch keeps
+`enable_mission_node:=false`.
 
 ## Planned Autonomy Work
 
 Ideas not implemented yet:
 
 - use QR readings inside a mission;
-- implement a small mission state machine;
-- add a future `mission_node` that decides what to search, align to, and land on.
+- visit multiple Phase 1 landing bases;
+- visually return to `takeoff_base`;
+- real automatic landing outside dry-run.

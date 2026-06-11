@@ -10,7 +10,10 @@ from tello_driver.tello_client import TelloClient
 
 
 class TelloJoyNode(Node):
+    """Controla o Tello manualmente a partir de um joystick ROS."""
+
     def __init__(self):
+        """Declara parametros, inicializa SDK e cria subscriber/timer de RC."""
         super().__init__('tello_joy_node')
 
         # -----------------------------
@@ -101,6 +104,7 @@ class TelloJoyNode(Node):
         self.get_logger().info(f'Assinando joystick em: {self.joy_topic}')
 
     def _initialize_tello(self) -> None:
+        """Coloca o Tello em modo SDK antes de aceitar comandos."""
         response = self.tello.enter_sdk_mode()
 
         if response is None:
@@ -112,25 +116,30 @@ class TelloJoyNode(Node):
         self.get_logger().info(f'SDK ativo: {response}')
 
     def _apply_deadzone(self, value: float) -> float:
+        """Zera pequenos deslocamentos analogicos do joystick."""
         return 0.0 if abs(value) < self.deadzone else value
 
     @staticmethod
     def _safe_axis(axes, index: int) -> float:
+        """Le um eixo com fallback seguro caso o indice nao exista."""
         if index < 0 or index >= len(axes):
             return 0.0
         return axes[index]
 
     @staticmethod
     def _safe_button(buttons, index: int) -> int:
+        """Le um botao com fallback seguro caso o indice nao exista."""
         if index < 0 or index >= len(buttons):
             return 0
         return buttons[index]
 
     @staticmethod
     def _is_ok_response(response: Optional[str]) -> bool:
+        """Normaliza a resposta do SDK e verifica se foi `ok`."""
         return response is not None and response.strip().lower() == 'ok'
 
     def _cooldown_remaining(self, now_ns: int) -> float:
+        """Calcula quanto tempo falta para aceitar outro comando critico."""
         if self.last_critical_command_time_ns == 0:
             return 0.0
 
@@ -138,12 +147,14 @@ class TelloJoyNode(Node):
         return max(0.0, self.command_cooldown - elapsed_sec)
 
     def _pause_rc(self, duration_sec: float) -> None:
+        """Zera o RC por alguns segundos apos takeoff/land."""
         now_ns = self.get_clock().now().nanoseconds
         pause_until_ns = now_ns + int(duration_sec * 1e9)
         self.rc_pause_until_ns = max(self.rc_pause_until_ns, pause_until_ns)
         self.current_rc = (0, 0, 0, 0)
 
     def _handle_takeoff(self, now_ns: int) -> None:
+        """Executa takeoff com cooldown e pausa temporaria de RC."""
         remaining = self._cooldown_remaining(now_ns)
         if remaining > 0.0:
             self.get_logger().warn(
@@ -164,6 +175,7 @@ class TelloJoyNode(Node):
             self._pause_rc(self.takeoff_rc_pause)
 
     def _handle_land(self, now_ns: int) -> None:
+        """Executa land com cooldown e pausa temporaria de RC."""
         remaining = self._cooldown_remaining(now_ns)
         if remaining > 0.0:
             self.get_logger().warn(
@@ -184,6 +196,7 @@ class TelloJoyNode(Node):
             self._pause_rc(self.land_rc_pause)
 
     def _joy_callback(self, msg: Joy) -> None:
+        """Converte eixos/botoes do joystick em RC, takeoff e land."""
         now_ns = self.get_clock().now().nanoseconds
         self.last_joy_time_ns = now_ns
 
@@ -212,6 +225,7 @@ class TelloJoyNode(Node):
         self.last_land_pressed = land_pressed
 
     def _send_current_rc(self) -> None:
+        """Envia periodicamente o RC atual ou zero se o joystick expirar."""
         if not self.sdk_ready:
             return
 
@@ -235,6 +249,7 @@ class TelloJoyNode(Node):
             self.get_logger().warn('Falha ao enviar comando RC.')
 
     def destroy_node(self):
+        """Para o drone e fecha o cliente SDK antes do shutdown."""
         try:
             self.tello.send_rc(0, 0, 0, 0)
         except Exception:
@@ -245,6 +260,7 @@ class TelloJoyNode(Node):
 
 
 def main(args=None):
+    """Start joy_node and translate joystick messages into Tello commands."""
     rclpy.init(args=args)
     node = TelloJoyNode()
 

@@ -14,6 +14,9 @@ def generate_launch_description():
     enable_stream_on = LaunchConfiguration('enable_stream_on')
     enable_landing_base_node = LaunchConfiguration('enable_landing_base_node')
     landing_base_publish_mask = LaunchConfiguration('landing_base_publish_mask')
+    enable_mission_node = LaunchConfiguration('enable_mission_node')
+    mission_id = LaunchConfiguration('mission_id')
+    mission_dry_run = LaunchConfiguration('mission_dry_run')
     start_armed = LaunchConfiguration('start_armed')
     max_xy_speed = LaunchConfiguration('max_xy_speed')
     max_z_speed = LaunchConfiguration('max_z_speed')
@@ -54,6 +57,21 @@ def generate_launch_description():
             'landing_base_publish_mask',
             default_value='false',
             description='Publish the landing base combined mask for calibration.',
+        ),
+        DeclareLaunchArgument(
+            'enable_mission_node',
+            default_value='false',
+            description='Start mission_node. Disabled by default for safety.',
+        ),
+        DeclareLaunchArgument(
+            'mission_id',
+            default_value='phase1_demo',
+            description='Mission id used by mission_node.',
+        ),
+        DeclareLaunchArgument(
+            'mission_dry_run',
+            default_value='true',
+            description='Run mission_node without publishing real autonomy commands.',
         ),
         DeclareLaunchArgument(
             'start_armed',
@@ -126,6 +144,17 @@ def generate_launch_description():
                     landing_base_publish_mask,
                     value_type=bool,
                 ),
+            }],
+        ),
+
+        Node(
+            package='tello_driver',
+            executable='mission_node',
+            output='screen',
+            condition=IfCondition(enable_mission_node),
+            parameters=[{
+                'mission_id': mission_id,
+                'dry_run': ParameterValue(mission_dry_run, value_type=bool),
             }],
         ),
 

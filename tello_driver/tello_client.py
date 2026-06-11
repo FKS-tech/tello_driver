@@ -5,6 +5,13 @@ from typing import Optional
 
 
 class TelloClient:
+    """Small UDP client for the Tello SDK command channel.
+
+    This helper deliberately stays independent from ROS. Nodes can reuse it to
+    send SDK commands while tests can replace or exercise it without spinning a
+    ROS executor.
+    """
+
     def __init__(
         self,
         tello_ip: str = '192.168.10.1',
@@ -12,6 +19,7 @@ class TelloClient:
         local_port: int = 9000,
         timeout: float = 5.0,
     ):
+        """Open the UDP socket used for SDK commands and responses."""
         self.tello_ip = tello_ip
         self.tello_port = tello_port
         self.local_port = local_port
@@ -26,6 +34,7 @@ class TelloClient:
         self.socket.settimeout(timeout)
 
     def close(self) -> None:
+        """Close the UDP socket safely, even if called more than once."""
         if self._closed:
             return
 
@@ -37,6 +46,11 @@ class TelloClient:
             self._closed = True
 
     def send_command(self, command: str) -> Optional[str]:
+        """Send a blocking SDK command and return the text response.
+
+        Returns None when the socket is closed, the command times out, or the
+        drone does not provide a readable response.
+        """
         if self._closed:
             return None
 
@@ -48,10 +62,17 @@ class TelloClient:
             return None
 
     def send_rc(self, left_right: int, forward_back: int, up_down: int, yaw: int) -> bool:
+        """Send a non-blocking RC velocity command.
+
+        The Tello SDK expects each axis in the range -100..100. This method
+        clamps the values before sending and returns True only if the UDP packet
+        was handed to the socket successfully.
+        """
         if self._closed:
             return False
 
         def clamp(value: float) -> int:
+            """Convert one RC axis to the integer range accepted by the SDK."""
             return max(-100, min(100, int(value)))
 
         command = (
@@ -66,19 +87,25 @@ class TelloClient:
             return False
 
     def enter_sdk_mode(self) -> Optional[str]:
+        """Put the drone in SDK mode and return its response."""
         return self.send_command('command')
 
     def takeoff(self) -> Optional[str]:
+        """Ask the drone to take off and return its response."""
         return self.send_command('takeoff')
 
     def land(self) -> Optional[str]:
+        """Ask the drone to land and return its response."""
         return self.send_command('land')
 
     def stream_on(self) -> Optional[str]:
+        """Enable the Tello video stream and return its response."""
         return self.send_command('streamon')
 
     def stream_off(self) -> Optional[str]:
+        """Disable the Tello video stream and return its response."""
         return self.send_command('streamoff')
 
     def emergency(self) -> Optional[str]:
+        """Trigger the emergency motor stop command and return its response."""
         return self.send_command('emergency')

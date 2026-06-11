@@ -15,7 +15,10 @@ from tello_driver.visual_math import compute_bbox_center, compute_normalized_err
 
 
 class QRNode(Node):
+    """Detecta QR Codes em frames do Tello e publica deteccoes JSON."""
+
     def __init__(self):
+        """Configura parametros, detector OpenCV, publishers e subscriber."""
         super().__init__('qr_node')
 
         self.declare_parameter('input_topic', '/tello/image_raw')
@@ -86,6 +89,7 @@ class QRNode(Node):
         self.get_logger().info(f'Publicando QR Codes em: {self.output_detection_topic}')
 
     def _image_callback(self, msg: Image) -> None:
+        """Recebe frames, detecta QR Codes e publica debug/imagem anotada."""
         self.frame_count += 1
         if self.frame_count % self.process_every_n_frames != 0:
             return
@@ -113,6 +117,7 @@ class QRNode(Node):
             cv2.waitKey(1)
 
     def _detect_and_annotate(self, frame):
+        """Tenta detectar QR em varias versoes do frame e desenha resultados."""
         annotated = frame.copy()
         frame_h, frame_w = frame.shape[:2]
         detections = []
@@ -155,6 +160,7 @@ class QRNode(Node):
         return detections, annotated, detection_method
 
     def _build_detection_frames(self, frame) -> list[tuple[str, object]]:
+        """Monta a sequencia de imagens tentadas pelo detector de QR."""
         frames = [('original', frame)]
         if not self.use_preprocessing:
             return frames
@@ -203,6 +209,7 @@ class QRNode(Node):
 
     @staticmethod
     def _to_gray(frame):
+        """Converte frame BGR para cinza quando o preprocessamento precisa."""
         try:
             if len(frame.shape) == 2:
                 return frame
@@ -212,6 +219,7 @@ class QRNode(Node):
 
     @staticmethod
     def _scale_points_to_original(points, detection_frame, frame_w: int, frame_h: int):
+        """Reescala pontos detectados em frame alterado para o frame original."""
         detection_h, detection_w = detection_frame.shape[:2]
         if detection_w == frame_w and detection_h == frame_h:
             return points
@@ -228,6 +236,7 @@ class QRNode(Node):
             return points
 
     def _detect_qr_points(self, frame) -> list[tuple[str, object]]:
+        """Usa detectAndDecodeMulti quando existe e cai para detector simples."""
         if hasattr(self.detector, 'detectAndDecodeMulti'):
             try:
                 result = self.detector.detectAndDecodeMulti(frame)
@@ -251,6 +260,7 @@ class QRNode(Node):
 
     @staticmethod
     def _parse_multi_result(result) -> list[tuple[str, object]]:
+        """Normaliza o retorno variavel de detectAndDecodeMulti."""
         if not isinstance(result, tuple) or len(result) < 3:
             return []
 
@@ -276,6 +286,7 @@ class QRNode(Node):
         frame_w: int,
         frame_h: int,
     ) -> Optional[dict]:
+        """Converte pontos de QR em um dicionario compativel com vision_node."""
         flat_points = self._flatten_points(points)
         if flat_points is None:
             return None
@@ -316,6 +327,7 @@ class QRNode(Node):
 
     @staticmethod
     def _flatten_points(points):
+        """Transforma os pontos retornados pelo OpenCV em lista Nx2."""
         try:
             flat_points = points.reshape(-1, 2)
         except (AttributeError, ValueError):
@@ -327,6 +339,7 @@ class QRNode(Node):
         return flat_points
 
     def _draw_detection(self, annotated, points, detection: dict) -> None:
+        """Desenha poligono, centro e texto do QR no frame anotado."""
         flat_points = self._flatten_points(points)
         if flat_points is None:
             return
@@ -354,11 +367,13 @@ class QRNode(Node):
             self._warn_detector(f'Erro ao desenhar QR Code: {exc}')
 
     def _publish_detections(self, detections: list[dict]) -> None:
+        """Publica a lista de QR Codes em JSON."""
         msg = String()
         msg.data = json.dumps(detections, ensure_ascii=False)
         self.detection_pub.publish(msg)
 
     def _remember_decoded_qr(self, detections: list[dict]) -> None:
+        """Guarda o ultimo QR decodificado apenas para debug."""
         for detection in detections:
             if detection.get('decoded') and detection.get('data'):
                 self.last_decoded_value = detection['data']
@@ -366,6 +381,7 @@ class QRNode(Node):
                 return
 
     def _get_last_seen_age(self) -> Optional[float]:
+        """Retorna ha quantos segundos o ultimo QR decodificado foi visto."""
         if self.last_qr_seen_time_ns <= 0:
             return None
 
@@ -379,6 +395,7 @@ class QRNode(Node):
         detections: list[dict],
         detection_method: Optional[str],
     ) -> None:
+        """Publica contagem, metodo usado e ultimo QR visto para depuracao."""
         decoded_values = [
             detection['data']
             for detection in detections
@@ -396,6 +413,7 @@ class QRNode(Node):
         self.debug_pub.publish(msg)
 
     def _publish_annotated_image(self, annotated, header) -> None:
+        """Publica o frame anotado preservando o header da imagem original."""
         try:
             out_img = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
             out_img.header = header
@@ -404,6 +422,7 @@ class QRNode(Node):
             self.get_logger().error(f'Erro ao publicar imagem anotada QR: {exc}')
 
     def _warn_detector(self, message: str) -> None:
+        """Emite avisos do detector com throttle de tempo."""
         now_ns = self.get_clock().now().nanoseconds
         if now_ns - self.last_detector_warning_time_ns < int(2.0 * 1e9):
             return
@@ -412,6 +431,7 @@ class QRNode(Node):
         self.last_detector_warning_time_ns = now_ns
 
     def destroy_node(self):
+        """Fecha a janela de preview do QR antes do shutdown."""
         if self.show_preview:
             try:
                 cv2.destroyWindow('QR Preview')
@@ -421,6 +441,7 @@ class QRNode(Node):
 
 
 def main(args=None):
+    """Start qr_node and publish QR detections from camera frames."""
     rclpy.init(args=args)
     node = QRNode()
 

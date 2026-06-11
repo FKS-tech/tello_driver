@@ -78,6 +78,24 @@ landing_base_node:
     max_area_ratio: 0.80
     min_yellow_ratio_in_bbox: 0.02
     min_blue_ratio_in_bbox: 0.05
+    min_color_score: 0.45
+    min_shape_score: 0.35
+    min_pattern_score: 0.35
+    max_color_only_confidence: 0.60
+    max_overexposed_ratio: 0.35
+    landing_square_max_aspect: 1.60
+    enable_takeoff_base_detection: true
+    takeoff_min_aspect: 1.60
+    takeoff_max_aspect: 4.00
+    pattern_roi_size: 240
+    border_band_fraction: 0.08
+    circle_radius_min_fraction: 0.21
+    circle_radius_max_fraction: 0.34
+    cross_band_fraction: 0.06
+    temporal_window_size: 5
+    min_temporal_hits: 2
+    temporal_max_center_distance_norm: 0.18
+    temporal_max_area_ratio_delta: 0.12
     morph_kernel_size: 5
     publish_empty: true
     publish_mask: false
@@ -93,6 +111,38 @@ landing_base_node:
     blue_upper_h: 135
     blue_upper_s: 255
     blue_upper_v: 255
+
+mission_node:
+  ros__parameters:
+    mission_id: "phase1_demo"
+    dry_run: true
+    auto_start: false
+    target_class_name: "landing_base"
+    telemetry_topic: "/tello/telemetry/json"
+    landing_base_topic: "/vision/landing_base"
+    cmd_vel_topic: "/tello/autonomy/cmd_vel"
+    enable_topic: "/tello/autonomy/enable"
+    disable_topic: "/tello/autonomy/disable"
+    stop_topic: "/tello/autonomy/stop"
+    takeoff_topic: "/tello/autonomy/takeoff"
+    land_topic: "/tello/autonomy/land"
+    status_topic: "/mission/status"
+    event_topic: "/mission/event"
+    map_topic: "/mission/map"
+    start_topic: "/mission/start"
+    abort_topic: "/mission/abort"
+    reset_topic: "/mission/reset"
+    control_rate_hz: 10.0
+    min_battery_percent: 35
+    stabilize_duration_sec: 3.0
+    scan_duration_sec: 10.0
+    scan_yaw_speed: 15.0
+    align_error_x_threshold: 0.15
+    align_yaw_gain: 25.0
+    max_yaw_cmd: 20.0
+    approach_speed: 10.0
+    landing_area_ratio_threshold: 0.28
+    detection_timeout_sec: 1.0
 
 visual_servo_node:
   ros__parameters:

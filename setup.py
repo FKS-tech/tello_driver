@@ -32,6 +32,7 @@ setup(
             'qr_node = tello_driver.qr_node:main',
             'command_mux_node = tello_driver.command_mux_node:main',
             'landing_base_node = tello_driver.landing_base_node:main',
+            'mission_node = tello_driver.mission_node:main',
         ],
     },
 )

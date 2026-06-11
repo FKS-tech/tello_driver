@@ -9,7 +9,10 @@ from std_msgs.msg import String
 
 
 class TelloTelemetryNode(Node):
+    """Recebe telemetria UDP do Tello e republica em topicos ROS."""
+
     def __init__(self):
+        """Configura socket UDP, publishers e timer de leitura nao bloqueante."""
         super().__init__('tello_telemetry_node')
 
         self.declare_parameter('telemetry_port', 8890)
@@ -42,6 +45,7 @@ class TelloTelemetryNode(Node):
         self.get_logger().info(f'Publicando JSON em: {self.json_topic}')
 
     def _parse_telemetry(self, data: str) -> dict:
+        """Converte o texto `key:value;` do SDK em um dicionario Python."""
         parsed = {}
 
         for item in data.strip().split(';'):
@@ -55,6 +59,7 @@ class TelloTelemetryNode(Node):
 
     @staticmethod
     def _convert_value(value: str):
+        """Tenta converter valores de telemetria para int/float."""
         try:
             if '.' in value:
                 return float(value)
@@ -63,6 +68,7 @@ class TelloTelemetryNode(Node):
             return value
 
     def _poll_telemetry(self):
+        """Le todos os pacotes UDP disponiveis e publica bruto + JSON."""
         while True:
             try:
                 data, _ = self.telemetry_socket.recvfrom(2048)
@@ -90,6 +96,7 @@ class TelloTelemetryNode(Node):
                 self._log_summary(parsed)
 
     def _log_summary(self, telemetry: dict):
+        """Publica um resumo periodico no log sem inundar o terminal."""
         now_ns = self.get_clock().now().nanoseconds
         if now_ns - self.last_summary_log_ns < self.summary_log_interval_ns:
             return
@@ -109,6 +116,7 @@ class TelloTelemetryNode(Node):
         self.last_summary_log_ns = now_ns
 
     def destroy_node(self):
+        """Fecha o socket UDP antes do shutdown do node."""
         try:
             self.telemetry_socket.close()
         except Exception:
@@ -117,6 +125,7 @@ class TelloTelemetryNode(Node):
 
 
 def main(args=None):
+    """Start telemetry_node and publish decoded Tello state packets."""
     rclpy.init(args=args)
     node = TelloTelemetryNode()
 

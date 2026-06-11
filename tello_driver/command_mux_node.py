@@ -16,7 +16,10 @@ ZERO_RC: Tuple[int, int, int, int] = (0, 0, 0, 0)
 
 
 class CommandMuxNode(Node):
+    """Ponte segura entre comandos ROS autonomos e comandos reais do Tello."""
+
     def __init__(self):
+        """Declara parametros, inicializa SDK e cria topicos de controle."""
         super().__init__('command_mux_node')
 
         self.declare_parameter('tello_ip', '192.168.10.1')
@@ -157,6 +160,7 @@ class CommandMuxNode(Node):
         )
 
     def _initialize_tello(self) -> None:
+        """Inicializa o SDK ou assume que outro no ja fez essa etapa."""
         if not self.enable_sdk_init:
             self.sdk_ready = True
             self.get_logger().info(
@@ -175,10 +179,12 @@ class CommandMuxNode(Node):
 
     @staticmethod
     def _is_ok_response(response: Optional[str]) -> bool:
+        """Verifica se uma resposta textual do SDK equivale a `ok`."""
         return response is not None and response.strip().lower() == 'ok'
 
     @staticmethod
     def _safe_speed_limit(value: float) -> float:
+        """Normaliza limites de velocidade para a faixa segura 0..100."""
         try:
             speed_limit = float(value)
         except (TypeError, ValueError):
@@ -191,9 +197,11 @@ class CommandMuxNode(Node):
 
     @staticmethod
     def _clamp(value: float, min_value: float, max_value: float) -> float:
+        """Limita um valor dentro de um intervalo fechado."""
         return max(min_value, min(max_value, value))
 
     def _warn_disarmed_cmd(self) -> None:
+        """Avisa com throttle quando cmd_vel chega com autonomia desarmada."""
         now_ns = self.get_clock().now().nanoseconds
         if now_ns - self.last_disarmed_cmd_warn_time_ns < int(2.0 * 1e9):
             return
@@ -207,6 +215,7 @@ class CommandMuxNode(Node):
         requested_value: float,
         limited_value: float,
     ) -> None:
+        """Avisa com throttle quando algum eixo de RC foi limitado."""
         now_ns = self.get_clock().now().nanoseconds
         if now_ns - self.last_limit_warn_time_ns < int(2.0 * 1e9):
             return
@@ -223,6 +232,7 @@ class CommandMuxNode(Node):
         speed_limit: float,
         axis_name: str,
     ) -> int:
+        """Converte um eixo Twist em inteiro RC respeitando limites."""
         if not math.isfinite(value):
             return 0
 
@@ -235,6 +245,7 @@ class CommandMuxNode(Node):
         return int(axis_limited)
 
     def _twist_to_rc(self, msg: Twist) -> Tuple[int, int, int, int]:
+        """Mapeia Twist para a ordem RC do Tello: lr, fb, ud, yaw."""
         forward_back = self._to_limited_rc_axis(
             msg.linear.x,
             self.max_xy_speed,
@@ -259,6 +270,7 @@ class CommandMuxNode(Node):
         return left_right, forward_back, up_down, yaw
 
     def _cmd_vel_callback(self, msg: Twist) -> None:
+        """Recebe cmd_vel autonomo e envia RC se a autonomia estiver armada."""
         if not self.armed:
             self.current_rc = ZERO_RC
             self._send_zero_rc()
@@ -278,6 +290,7 @@ class CommandMuxNode(Node):
         self._send_rc(*self.current_rc)
 
     def _takeoff_callback(self, _msg: Empty) -> None:
+        """Executa takeoff por topico, exigindo autonomia armada."""
         self._handle_critical_command(
             name='Takeoff',
             command=self.tello.takeoff,
@@ -288,6 +301,7 @@ class CommandMuxNode(Node):
         )
 
     def _land_callback(self, _msg: Empty) -> None:
+        """Executa land por topico, mesmo com autonomia desarmada."""
         self._handle_critical_command(
             name='Land',
             command=self.tello.land,
@@ -298,6 +312,7 @@ class CommandMuxNode(Node):
         )
 
     def _enable_callback(self, _msg: Empty) -> None:
+        """Arma a autonomia para aceitar cmd_vel."""
         if self.armed:
             self.get_logger().info('Enable recebido: autonomia ja estava armada.')
             return
@@ -310,6 +325,7 @@ class CommandMuxNode(Node):
         self.get_logger().warn('Autonomia armada: cmd_vel sera aceito.')
 
     def _disable_callback(self, _msg: Empty) -> None:
+        """Desarma a autonomia e zera o RC imediatamente."""
         was_armed = self.armed
         self.armed = False
         self.current_rc = ZERO_RC
@@ -323,6 +339,7 @@ class CommandMuxNode(Node):
             self.get_logger().info('Disable recebido: autonomia ja estava desarmada.')
 
     def _stop_callback(self, _msg: Empty) -> None:
+        """Zera o RC sem alterar o estado armado/desarmado."""
         self.current_rc = ZERO_RC
         self.watchdog_stopped = False
         self._send_zero_rc()
@@ -332,6 +349,7 @@ class CommandMuxNode(Node):
         )
 
     def _emergency_callback(self, _msg: Empty) -> None:
+        """Envia emergency ao Tello e desarma a autonomia."""
         self.current_rc = ZERO_RC
         self.armed = False
         self.watchdog_stopped = False
@@ -351,6 +369,7 @@ class CommandMuxNode(Node):
         )
 
     def _cooldown_remaining(self, now_ns: int) -> float:
+        """Calcula cooldown restante para comandos criticos."""
         if self.last_critical_command_time_ns == 0:
             return 0.0
 
@@ -358,6 +377,7 @@ class CommandMuxNode(Node):
         return max(0.0, self.command_cooldown - elapsed_sec)
 
     def _pause_rc(self, duration_sec: float) -> None:
+        """Pausa comandos RC apos takeoff/land para evitar interferencia."""
         now_ns = self.get_clock().now().nanoseconds
         self.rc_pause_until_ns = max(
             self.rc_pause_until_ns,
@@ -375,6 +395,7 @@ class CommandMuxNode(Node):
         requires_armed: bool,
         uses_cooldown: bool,
     ) -> None:
+        """Centraliza validacoes e execucao de takeoff/land/emergency-like."""
         if requires_armed and not self.armed:
             self.get_logger().warn(f'{name} ignorado: autonomia esta desarmada.')
             return
@@ -412,9 +433,11 @@ class CommandMuxNode(Node):
         self._pause_rc(pause_sec)
 
     def _is_rc_paused(self, now_ns: int) -> bool:
+        """Indica se RC deve permanecer zerado por pausa temporaria."""
         return now_ns < self.rc_pause_until_ns
 
     def _rc_timer_callback(self) -> None:
+        """Reenvia RC atual ou zero conforme watchdog, pausa e estado armado."""
         now_ns = self.get_clock().now().nanoseconds
 
         if not self.armed:
@@ -449,6 +472,7 @@ class CommandMuxNode(Node):
         self._send_rc(*self.current_rc)
 
     def _warn_rc_failure(self) -> None:
+        """Avisa com throttle quando o envio RC falha."""
         now_ns = self.get_clock().now().nanoseconds
         if now_ns - self.last_rc_failure_warn_time_ns < int(1.0 * 1e9):
             return
@@ -463,6 +487,7 @@ class CommandMuxNode(Node):
         up_down: int,
         yaw: int,
     ) -> bool:
+        """Envia um comando RC ao Tello e registra falhas."""
         ok = self.tello.send_rc(left_right, forward_back, up_down, yaw)
         if not ok:
             self._warn_rc_failure()
@@ -470,9 +495,11 @@ class CommandMuxNode(Node):
         return ok
 
     def _send_zero_rc(self) -> bool:
+        """Atalho para enviar RC totalmente zerado."""
         return self._send_rc(*ZERO_RC)
 
     def destroy_node(self):
+        """Zera RC e fecha o cliente Tello durante o shutdown."""
         try:
             self.tello.send_rc(*ZERO_RC)
         except Exception:
@@ -483,6 +510,7 @@ class CommandMuxNode(Node):
 
 
 def main(args=None):
+    """Start command_mux_node and keep it spinning until shutdown."""
     rclpy.init(args=args)
     node = CommandMuxNode()
 

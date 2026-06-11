@@ -11,7 +11,10 @@ from std_msgs.msg import String
 
 
 class VisualServoNode(Node):
+    """Transforma deteccoes visuais em comando de yaw para centralizar alvo."""
+
     def __init__(self):
+        """Configura filtros de alvo, publishers e watchdog de perda visual."""
         super().__init__('visual_servo_node')
 
         self.declare_parameter('target_class_name', '')
@@ -81,13 +84,16 @@ class VisualServoNode(Node):
 
     @staticmethod
     def _clamp(value: float, min_value: float, max_value: float) -> float:
+        """Limita um valor numerico dentro de um intervalo fechado."""
         return max(min_value, min(max_value, value))
 
     @staticmethod
     def _zero_twist() -> Twist:
+        """Cria um Twist zerado para parar o comando visual."""
         return Twist()
 
     def _warn_invalid_message(self, reason: str) -> None:
+        """Loga mensagens invalidas com throttle para nao poluir o terminal."""
         now_ns = self.get_clock().now().nanoseconds
         if now_ns - self.last_invalid_warning_time_ns < int(2.0 * 1e9):
             return
@@ -98,11 +104,13 @@ class VisualServoNode(Node):
         self.last_invalid_warning_time_ns = now_ns
 
     def _publish_debug(self, payload: dict) -> None:
+        """Publica o estado interno do servo visual em JSON."""
         msg = String()
         msg.data = json.dumps(payload, ensure_ascii=False)
         self.debug_pub.publish(msg)
 
     def _publish_no_target_debug(self, reason: str) -> None:
+        """Publica debug padronizado quando nenhum alvo valido esta disponivel."""
         self._publish_debug({
             'target_found': False,
             'reason': reason,
@@ -112,6 +120,7 @@ class VisualServoNode(Node):
         })
 
     def _detections_callback(self, msg: String) -> None:
+        """Recebe a lista JSON de deteccoes e publica o comando de yaw."""
         try:
             detections = json.loads(msg.data)
         except json.JSONDecodeError:
@@ -158,6 +167,7 @@ class VisualServoNode(Node):
         })
 
     def _select_target(self, detections: list) -> tuple[Optional[dict], bool]:
+        """Filtra deteccoes e escolhe o alvo conforme estrategia configurada."""
         valid_detections = []
 
         for detection in detections:
@@ -205,6 +215,7 @@ class VisualServoNode(Node):
         ), False
 
     def _is_valid_detection(self, detection: dict) -> bool:
+        """Valida campos minimos, classe, confianca e area da deteccao."""
         try:
             confidence = float(detection.get('confidence'))
             area_ratio = float(detection.get('area_ratio'))
@@ -225,6 +236,7 @@ class VisualServoNode(Node):
         return True
 
     def _get_detection_error(self, detection: dict) -> tuple[float, float]:
+        """Extrai o erro normalizado x/y usado pelo controle visual."""
         error_norm = detection.get('error_norm')
         if not isinstance(error_norm, list) or len(error_norm) < 1:
             raise ValueError('invalid error_norm')
@@ -234,6 +246,7 @@ class VisualServoNode(Node):
         return error_x, error_y
 
     def _has_recent_target_lock(self, now_ns: int) -> bool:
+        """Indica se ainda existe um alvo recente para manter lock."""
         if self.last_target_error_x is None or self.last_target_error_y is None:
             return False
 
@@ -244,16 +257,19 @@ class VisualServoNode(Node):
         return age_sec <= self.target_lock_timeout
 
     def _target_error_distance(self, detection: dict) -> float:
+        """Mede distancia entre uma deteccao e o alvo travado anterior."""
         error_x, error_y = self._get_detection_error(detection)
         dx = error_x - self.last_target_error_x
         dy = error_y - self.last_target_error_y
         return (dx * dx + dy * dy) ** 0.5
 
     def _center_distance(self, detection: dict) -> float:
+        """Mede quao longe a deteccao esta do centro da imagem."""
         error_x, error_y = self._get_detection_error(detection)
         return (error_x * error_x + error_y * error_y) ** 0.5
 
     def _compute_yaw_command(self, error_x: float) -> float:
+        """Converte erro horizontal normalizado em velocidade de yaw."""
         if abs(error_x) < self.center_deadband:
             return 0.0
 
@@ -261,6 +277,7 @@ class VisualServoNode(Node):
         return self._clamp(yaw_cmd, -self.max_yaw_speed, self.max_yaw_speed)
 
     def _watchdog_callback(self) -> None:
+        """Zera o comando se as deteccoes sumirem por tempo demais."""
         now_ns = self.get_clock().now().nanoseconds
         reference_time_ns = self.last_valid_detection_time_ns or self.node_start_time_ns
         age_sec = (now_ns - reference_time_ns) / 1e9
@@ -280,6 +297,7 @@ class VisualServoNode(Node):
 
 
 def main(args=None):
+    """Start visual_servo_node and convert detections into velocity commands."""
     rclpy.init(args=args)
     node = VisualServoNode()
 

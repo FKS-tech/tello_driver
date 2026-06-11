@@ -2,6 +2,7 @@
 
 
 def clamp(value: float, min_value: float, max_value: float) -> float:
+    """Limit a numeric value to the inclusive [min_value, max_value] range."""
     return max(min_value, min(max_value, value))
 
 
@@ -11,6 +12,7 @@ def compute_bbox_center(
     x2: float,
     y2: float,
 ) -> tuple[float, float]:
+    """Return the center point of a bounding box in pixel coordinates."""
     return (float(x1) + float(x2)) / 2.0, (float(y1) + float(y2)) / 2.0
 
 
@@ -20,6 +22,11 @@ def compute_normalized_error(
     frame_w: int,
     frame_h: int,
 ) -> tuple[float, float]:
+    """Return target error relative to the image center, normalized to -1..1.
+
+    A result near (0, 0) means the target is centered. Positive x is to the
+    right of the frame center, and positive y is below the frame center.
+    """
     if frame_w <= 0 or frame_h <= 0:
         return 0.0, 0.0
 

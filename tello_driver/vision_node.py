@@ -15,7 +15,10 @@ from tello_driver.visual_math import compute_bbox_center, compute_normalized_err
 
 
 class VisionNode(Node):
+    """Executa YOLO em frames do Tello e publica deteccoes JSON."""
+
     def __init__(self):
+        """Carrega parametros, modelo YOLO, publishers e subscriber de imagem."""
         super().__init__('vision_node')
 
         self.declare_parameter('input_topic', '/tello/image_raw')
@@ -50,6 +53,7 @@ class VisionNode(Node):
         self.get_logger().info(f'Modelo: {self.model_path}')
 
     def image_callback(self, msg):
+        """Processa um frame, roda YOLO e publica imagem anotada + deteccoes."""
         self.frame_count += 1
 
         if self.process_every_n_frames > 1:
@@ -121,12 +125,14 @@ class VisionNode(Node):
 
 
     def destroy_node(self):
+        """Fecha a janela de preview antes de destruir o node."""
         if self.show_preview:
             cv2.destroyAllWindows()
         super().destroy_node()
 
 
 def main(args=None):
+    """Start vision_node and publish YOLO detections from camera frames."""
     rclpy.init(args=args)
     node = VisionNode()
 

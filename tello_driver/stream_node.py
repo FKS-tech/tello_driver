@@ -11,8 +11,10 @@ from tello_driver.tello_client import TelloClient
 
 
 class TelloVideoNode(Node):
+    """Abre o stream de video do Tello e publica frames como sensor_msgs/Image."""
 
     def __init__(self):
+        """Declara parametros, inicializa stream SDK e configura o timer de frames."""
         super().__init__('tello_video_node')
 
         # Parâmetros
@@ -54,6 +56,7 @@ class TelloVideoNode(Node):
         self.get_logger().info(f"Preview local: {'ON' if self.show_preview else 'OFF'}")
 
     def initialize_tello_stream(self):
+        """Envia `command` e/ou `streamon` antes de abrir o video UDP."""
         if not self.enable_sdk_init and not self.enable_stream_on:
             return
 
@@ -78,6 +81,7 @@ class TelloVideoNode(Node):
             tello.close()
 
     def open_stream(self):
+        """Abre ou reabre o VideoCapture usando a URL configurada."""
         if self.cap is not None:
             self.cap.release()
 
@@ -89,6 +93,7 @@ class TelloVideoNode(Node):
             self.get_logger().info("Stream de vídeo aberto com sucesso.")
 
     def update_frame(self):
+        """Captura um frame, publica no ROS e mostra preview se habilitado."""
         if self.cap is None or not self.cap.isOpened():
             self.get_logger().warn("Stream não está aberto. Tentando reconectar...")
             self.open_stream()
@@ -117,6 +122,7 @@ class TelloVideoNode(Node):
             cv2.waitKey(1)
 
     def destroy_node(self):
+        """Libera o VideoCapture e fecha janelas OpenCV no shutdown."""
         if self.cap is not None:
             self.cap.release()
 
@@ -127,6 +133,7 @@ class TelloVideoNode(Node):
 
 
 def main(args=None):
+    """Start stream_node and publish frames from the Tello video stream."""
     rclpy.init(args=args)
 
     node = TelloVideoNode()
